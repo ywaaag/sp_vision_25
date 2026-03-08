@@ -31,11 +31,11 @@ io::Command Aimer::aim(
 
   auto detect_now_gap = tools::delta_time(now, timestamp);
   auto future = to_now ? (detect_now_gap + predict_time_) : 0.1 + predict_time_;
-  double yaw, pitch;
+  double yaw = 0, pitch = 0;
 
-  bool angle_changed =
-    std::abs(last_yaw_ - yaw) > 5 / 57.3 || std::abs(last_pitch_ - pitch) > 5 / 57.3;
   if (get_send_angle(target, future, bullet_speed, to_now, yaw, pitch)) {
+    bool angle_changed =
+      std::abs(last_yaw_ - yaw) > 5 / 57.3 || std::abs(last_pitch_ - pitch) > 5 / 57.3;
     command.yaw = yaw;
     command.pitch = -pitch;  //世界坐标系下的pitch向上为负
     if (mistake_count_ > 3) {
@@ -84,11 +84,11 @@ auto_aim::Plan Aimer::mpc_aim(
 
   auto detect_now_gap = tools::delta_time(now, timestamp);
   auto future = to_now ? (detect_now_gap + predict_time_) : 0.1 + predict_time_;
-  double yaw, pitch;
+  double yaw = 0, pitch = 0;
 
-  bool angle_changed =
-    std::abs(last_yaw_ - yaw) > 5 / 57.3 || std::abs(last_pitch_ - pitch) > 5 / 57.3;
   if (get_send_angle(target, future, bullet_speed, to_now, yaw, pitch)) {
+    bool angle_changed =
+      std::abs(last_yaw_ - yaw) > 5 / 57.3 || std::abs(last_pitch_ - pitch) > 5 / 57.3;
     plan.yaw = yaw;
     plan.pitch = -pitch;  //世界坐标系下的pitch向上为负
     if (mistake_count_ > 3) {
@@ -176,7 +176,7 @@ bool Aimer::get_send_angle(
 
   // 计算新的目标点的空间坐标
   aim_in_world = target.point_buff2world(Eigen::Vector3d(0.0, 0.0, 0.7));
-  d = fsqrt(aim_in_world[0] * aim_in_world[0] + aim_in_world[1] * aim_in_world[1]);
+  d = std::sqrt(aim_in_world[0] * aim_in_world[0] + aim_in_world[1] * aim_in_world[1]);
   h = aim_in_world[2];
   tools::Trajectory trajectory1(bullet_speed, d, h);
   if (trajectory1.unsolvable) {  // 如果弹道无法解算，返回未命中结果

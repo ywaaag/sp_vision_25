@@ -42,11 +42,6 @@ public:
 
     not_empty_condition_.wait(lock, [this] { return !queue_.empty(); });
 
-    if (queue_.empty()) {
-      std::cerr << "Error: Attempt to pop from an empty queue." << std::endl;
-      return;
-    }
-
     value = queue_.front();
     queue_.pop();
   }

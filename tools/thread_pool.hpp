@@ -23,20 +23,20 @@ struct Frame
 };
 
 inline std::vector<auto_aim::YOLO> create_yolo11s(
-  const std::string & config_path, int numebr, bool debug)
+  const std::string & config_path, int number, bool debug)
 {
   std::vector<auto_aim::YOLO> yolo11s;
-  for (int i = 0; i < numebr; i++) {
+  for (int i = 0; i < number; i++) {
     yolo11s.push_back(auto_aim::YOLO(config_path, debug));
   }
   return yolo11s;
 }
 
 inline std::vector<auto_aim::YOLO> create_yolov8s(
-  const std::string & config_path, int numebr, bool debug)
+  const std::string & config_path, int number, bool debug)
 {
   std::vector<auto_aim::YOLO> yolov8s;
-  for (int i = 0; i < numebr; i++) {
+  for (int i = 0; i < number; i++) {
     yolov8s.push_back(auto_aim::YOLO(config_path, debug));
   }
   return yolov8s;
@@ -110,7 +110,11 @@ public:
     return true;
   }
 
-  size_t get_size() { return main_queue_.size() + buffer_.size(); }
+  size_t get_size()
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return main_queue_.size() + buffer_.size();
+  }
 
 private:
   std::queue<tools::Frame> main_queue_;

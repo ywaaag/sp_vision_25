@@ -2,6 +2,8 @@
 
 #include <yaml-cpp/yaml.h>
 
+#include <cstring>
+
 namespace auto_aim
 {
 namespace multithread
@@ -55,7 +57,8 @@ void MultiThreadDetector::push(cv::Mat img, std::chrono::steady_clock::time_poin
 
   auto input_port = compiled_model_.input();
   auto infer_request = compiled_model_.create_infer_request();
-  ov::Tensor input_tensor(ov::element::u8, {1, 640, 640, 3}, input.data);
+  ov::Tensor input_tensor(ov::element::u8, {1, 640, 640, 3});
+  std::memcpy(input_tensor.data(), input.data, input.total() * input.elemSize());
 
   infer_request.set_input_tensor(input_tensor);
   infer_request.start_async();

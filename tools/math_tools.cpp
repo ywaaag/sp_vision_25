@@ -37,7 +37,9 @@ Eigen::Vector3d eulers(Eigen::Quaterniond q, int axis0, int axis1, int axis2, bo
 
   Eigen::Vector3d eulers;
   auto n2 = a * a + b * b + c * c + d * d;
-  eulers[1] = std::acos(2 * (a * a + b * b) / n2 - 1);
+  double acos_arg = 2 * (a * a + b * b) / n2 - 1;
+  acos_arg = std::max(-1.0, std::min(1.0, acos_arg));  // Clamp to valid acos range
+  eulers[1] = std::acos(acos_arg);
 
   auto half_sum = std::atan2(b, a);
   auto half_diff = std::atan2(-d, c);
@@ -188,7 +190,9 @@ double get_abs_angle(const Eigen::Vector2d & vec1, const Eigen::Vector2d & vec2)
   if (vec1.norm() == 0. || vec2.norm() == 0.) {
     return 0.;
   }
-  return std::acos(vec1.dot(vec2) / (vec1.norm() * vec2.norm()));
+  double cos_angle = vec1.dot(vec2) / (vec1.norm() * vec2.norm());
+  cos_angle = std::max(-1.0, std::min(1.0, cos_angle));  // Clamp to valid acos range
+  return std::acos(cos_angle);
 }
 
 double limit_min_max(double input, double min, double max)

@@ -126,7 +126,7 @@ std::vector<cv::Point2f> Solver::reproject_armor(
   return image_points;
 }
 
-double Solver::oupost_reprojection_error(Armor armor, const double & pitch)
+double Solver::outpost_reprojection_error(Armor armor, const double & pitch)
 {
   // solve
   const auto & object_points =
