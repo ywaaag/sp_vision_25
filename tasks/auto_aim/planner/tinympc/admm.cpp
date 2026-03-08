@@ -49,7 +49,7 @@ tinyVector project_soc(tinyVector s, float mu) {
     else if (a <= u0) { // in cone
         return s;
     }
-    else if (a >= abs(u0)) { // outside cone
+    else if (a >= std::abs(u0)) { // outside cone
         Matrix<tinytype, 3, 1> u2(u1.size() + 1);
         u2 << u1, a/mu;
         return 0.5 * (1 + u0/a) * u2;
