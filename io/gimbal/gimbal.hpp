@@ -43,8 +43,6 @@ struct __attribute__((packed)) VisionToGimbal
   uint8_t tail = 0xff;
 };
 
-git@github.com:Kuroneko-avi/sp_vision_25.git
-
 static_assert(sizeof(VisionToGimbal) <= 64);
 
 enum class GimbalMode

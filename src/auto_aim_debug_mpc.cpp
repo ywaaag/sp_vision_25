@@ -119,6 +119,21 @@ int main(int argc, char * argv[])
     else
       target_queue.push(std::nullopt);
 
+    nlohmann::json data;
+    // 装甲板原始观测数据
+    data["armor_num"] = armors.size();
+    if (!armors.empty()) {
+      const auto & armor = armors.front();
+      data["armor_x"] = armor.xyz_in_world[0];
+      data["armor_y"] = armor.xyz_in_world[1];
+      data["armor_z"] = armor.xyz_in_world[2];
+      data["armor_yaw"] = armor.ypr_in_world[0] * 57.3;
+      data["armor_yaw_raw"] = armor.yaw_raw * 57.3;
+      data["armor_center_x"] = armor.center_norm.x;
+      data["armor_center_y"] = armor.center_norm.y;
+    }
+    plotter.plot(data);
+
     if (!targets.empty()) {
       auto target = targets.front();
 
