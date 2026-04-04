@@ -12,7 +12,7 @@
 const std::string keys =
   "{help h usage ? | | 输出命令行参数说明}"
   "{f              | | 是否开火}"
-  "{@config-path   | | yaml配置文件路径 }";
+  "{@config-path   |configs/standard3.yaml | yaml配置文件路径 }";
 
 using namespace std::chrono_literals;
 
@@ -79,6 +79,7 @@ int main(int argc, char * argv[])
     nlohmann::json data;
     data["q_yaw"] = ypr[0];
     data["q_pitch"] = ypr[1];
+    data["q_roll"] = ypr[2];
     data["yaw"] = state.yaw;
     data["vyaw"] = state.yaw_vel;
     data["pitch"] = state.pitch;

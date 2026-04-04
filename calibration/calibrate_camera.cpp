@@ -11,15 +11,20 @@ const std::string keys =
   "{config-path c  | configs/calibration.yaml | yaml配置文件路径 }"
   "{@input-folder  | assets/img_with_q        | 输入文件夹路径   }";
 
-std::vector<cv::Point3f> centers_3d(const cv::Size & pattern_size, const float center_distance)
+// 棋盘格内角点3D坐标（Z=0平面）
+// pattern_size: (cols, rows) = (每行内角点数, 每列内角点数)
+// square_size: 相邻内角点间距（通常即方格边长，单位mm）
+std::vector<cv::Point3f> corners_3d(const cv::Size & pattern_size, float square_size)
 {
-  std::vector<cv::Point3f> centers_3d;
+  std::vector<cv::Point3f> pts;
+  pts.reserve(pattern_size.width * pattern_size.height);
 
-  for (int i = 0; i < pattern_size.height; i++)
-    for (int j = 0; j < pattern_size.width; j++)
-      centers_3d.push_back({j * center_distance, i * center_distance, 0});
-
-  return centers_3d;
+  for (int i = 0; i < pattern_size.height; i++) {
+    for (int j = 0; j < pattern_size.width; j++) {
+      pts.push_back({j * square_size, i * square_size, 0.0f});
+    }
+  }
+  return pts;
 }
 
 void load(
@@ -31,7 +36,7 @@ void load(
   auto yaml = YAML::LoadFile(config_path);
   auto pattern_cols = yaml["pattern_cols"].as<int>();
   auto pattern_rows = yaml["pattern_rows"].as<int>();
-  auto center_distance_mm = yaml["center_distance_mm"].as<double>();
+  auto center_distance_mm = yaml["center_distance_mm"].as<double>();  // 对棋盘格等同 square_size
   cv::Size pattern_size(pattern_cols, pattern_rows);
 
   for (int i = 1; true; i++) {
@@ -43,13 +48,27 @@ void load(
     // 设置图片尺寸
     img_size = img.size();
 
-    // 识别标定板
-    std::vector<cv::Point2f> centers_2d;
-    auto success = cv::findCirclesGrid(img, pattern_size, centers_2d, cv::CALIB_CB_SYMMETRIC_GRID);
+    // ===== 改为棋盘格检测 =====
+    std::vector<cv::Point2f> corners_2d;
+    int flags = cv::CALIB_CB_ADAPTIVE_THRESH | cv::CALIB_CB_NORMALIZE_IMAGE;
+    bool success = cv::findChessboardCorners(img, pattern_size, corners_2d, flags);
+
+    if (success) {
+      cv::Mat gray;
+      if (img.channels() == 3)
+        cv::cvtColor(img, gray, cv::COLOR_BGR2GRAY);
+      else
+        gray = img;
+
+      cv::cornerSubPix(
+        gray, corners_2d, cv::Size(11, 11), cv::Size(-1, -1),
+        cv::TermCriteria(cv::TermCriteria::EPS + cv::TermCriteria::MAX_ITER, 30, 0.01));
+    }
+    // ========================
 
     // 显示识别结果
     auto drawing = img.clone();
-    cv::drawChessboardCorners(drawing, pattern_size, centers_2d, success);
+    cv::drawChessboardCorners(drawing, pattern_size, corners_2d, success);
     cv::resize(drawing, drawing, {}, 0.5, 0.5);  // 缩小图片尺寸便于显示完全
     cv::imshow("Press any to continue", drawing);
     cv::waitKey(0);
@@ -59,8 +78,8 @@ void load(
     if (!success) continue;
 
     // 记录所需的数据
-    img_points.emplace_back(centers_2d);
-    obj_points.emplace_back(centers_3d(pattern_size, center_distance_mm));
+    img_points.emplace_back(corners_2d);
+    obj_points.emplace_back(corners_3d(pattern_size, static_cast<float>(center_distance_mm)));
   }
 }
 
@@ -105,11 +124,10 @@ int main(int argc, char * argv[])
   cv::Mat camera_matrix, distort_coeffs;
   std::vector<cv::Mat> rvecs, tvecs;
   auto criteria = cv::TermCriteria(
-    cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 100,
-    DBL_EPSILON);  // 默认迭代次数(30)有时会导致结果发散，故设为100
+    cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 100, DBL_EPSILON);
   cv::calibrateCamera(
     obj_points, img_points, img_size, camera_matrix, distort_coeffs, rvecs, tvecs, cv::CALIB_FIX_K3,
-    criteria);  // 由于视场角较小，不需要考虑k3
+    criteria);
 
   // 重投影误差
   double error_sum = 0;

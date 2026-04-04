@@ -86,8 +86,6 @@ void Gimbal::send(io::VisionToGimbal VisionToGimbal)
   tx_data_.pitch = VisionToGimbal.pitch;
   tx_data_.pitch_vel = VisionToGimbal.pitch_vel;
   tx_data_.pitch_acc = VisionToGimbal.pitch_acc;
-  tx_data_.crc16 = tools::get_crc16(
-    reinterpret_cast<uint8_t *>(&tx_data_), sizeof(tx_data_) - sizeof(tx_data_.crc16));
 
   try {
     serial_.write(reinterpret_cast<uint8_t *>(&tx_data_), sizeof(tx_data_));
@@ -107,8 +105,6 @@ void Gimbal::send(
   tx_data_.pitch = pitch;
   tx_data_.pitch_vel = pitch_vel;
   tx_data_.pitch_acc = pitch_acc;
-  tx_data_.crc16 = tools::get_crc16(
-    reinterpret_cast<uint8_t *>(&tx_data_), sizeof(tx_data_) - sizeof(tx_data_.crc16));
 
   try {
     serial_.write(reinterpret_cast<uint8_t *>(&tx_data_), sizeof(tx_data_));
@@ -145,7 +141,7 @@ void Gimbal::read_thread()
       continue;
     }
 
-    if (rx_data_.head[0] != 'S' || rx_data_.head[1] != 'P') continue;
+    if (rx_data_.head[0] != 'C' || rx_data_.head[1] != 'B') continue;
 
     auto t = std::chrono::steady_clock::now();
 
@@ -153,11 +149,6 @@ void Gimbal::read_thread()
           reinterpret_cast<uint8_t *>(&rx_data_) + sizeof(rx_data_.head),
           sizeof(rx_data_) - sizeof(rx_data_.head))) {
       error_count++;
-      continue;
-    }
-
-    if (!tools::check_crc16(reinterpret_cast<uint8_t *>(&rx_data_), sizeof(rx_data_))) {
-      tools::logger()->debug("[Gimbal] CRC16 check failed.");
       continue;
     }
 

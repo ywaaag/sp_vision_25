@@ -14,20 +14,24 @@ const std::string keys =
   "{config-path c  | configs/calibration.yaml | yaml配置文件路径 }"
   "{@input-folder  | assets/img_with_q        | 输入文件夹路径   }";
 
-std::vector<cv::Point3f> centers_3d(const cv::Size & pattern_size, const float center_distance)
+// 棋盘格内角点3D坐标（单位：mm）
+// pattern_size = (cols, rows) = (每行内角点数, 每列内角点数)
+// square_size_mm = 相邻内角点间距（即方格边长）
+std::vector<cv::Point3f> corners_3d(const cv::Size & pattern_size, float square_size_mm)
 {
-  std::vector<cv::Point3f> centers_3d;
+  std::vector<cv::Point3f> pts;
+  pts.reserve(pattern_size.width * pattern_size.height);
 
+  // 与原代码风格一致：标定板放在 YZ 平面，x=0
   for (int i = 0; i < pattern_size.height; i++) {
     for (int j = 0; j < pattern_size.width; j++) {
-      float x = 0;
-      float y = (-j + 0.5 * pattern_size.width) * center_distance;
-      float z = (-i + 0.5 * pattern_size.height) * center_distance;
-      centers_3d.push_back({x, y, z});
+      float x = 0.0f;
+      float y = (-j + 0.5f * pattern_size.width) * square_size_mm;
+      float z = (-i + 0.5f * pattern_size.height) * square_size_mm;
+      pts.push_back({x, y, z});
     }
   }
-
-  return centers_3d;
+  return pts;
 }
 
 Eigen::Quaterniond read_q(const std::string & q_path)
@@ -48,7 +52,7 @@ void load(
   auto yaml = YAML::LoadFile(config_path);
   auto pattern_cols = yaml["pattern_cols"].as<int>();
   auto pattern_rows = yaml["pattern_rows"].as<int>();
-  auto center_distance_mm = yaml["center_distance_mm"].as<double>();
+  auto center_distance_mm = yaml["center_distance_mm"].as<double>();  // 棋盘格下等同 square_size_mm
   R_gimbal2imubody_data = yaml["R_gimbal2imubody"].as<std::vector<double>>();
   auto camera_matrix_data = yaml["camera_matrix"].as<std::vector<double>>();
   auto distort_coeffs_data = yaml["distort_coeffs"].as<std::vector<double>>();
@@ -72,19 +76,33 @@ void load(
       R_gimbal2imubody.transpose() * R_imubody2imuabs * R_gimbal2imubody;
     Eigen::Vector3d ypr = tools::eulers(R_gimbal2world, 2, 1, 0) * 57.3;  // degree
 
-    // 在图片上显示云台的欧拉角，用来检验R_gimbal2imubody是否正确
+    // 在图片上显示云台的欧拉角
     auto drawing = img.clone();
     tools::draw_text(drawing, fmt::format("yaw   {:.2f}", ypr[0]), {40, 40}, {0, 0, 255});
     tools::draw_text(drawing, fmt::format("pitch {:.2f}", ypr[1]), {40, 80}, {0, 0, 255});
     tools::draw_text(drawing, fmt::format("roll  {:.2f}", ypr[2]), {40, 120}, {0, 0, 255});
 
-    // 识别标定板
-    std::vector<cv::Point2f> centers_2d;
-    auto success = cv::findCirclesGrid(img, pattern_size, centers_2d);  // 默认是对称圆点图案
+    // ===== 改为棋盘格识别 =====
+    std::vector<cv::Point2f> corners_2d;
+    int flags = cv::CALIB_CB_ADAPTIVE_THRESH | cv::CALIB_CB_NORMALIZE_IMAGE;
+    bool success = cv::findChessboardCorners(img, pattern_size, corners_2d, flags);
+
+    if (success) {
+      cv::Mat gray;
+      if (img.channels() == 3)
+        cv::cvtColor(img, gray, cv::COLOR_BGR2GRAY);
+      else
+        gray = img;
+
+      cv::cornerSubPix(
+        gray, corners_2d, cv::Size(11, 11), cv::Size(-1, -1),
+        cv::TermCriteria(cv::TermCriteria::EPS + cv::TermCriteria::MAX_ITER, 30, 0.01));
+    }
+    // =======================
 
     // 显示识别结果
-    cv::drawChessboardCorners(drawing, pattern_size, centers_2d, success);
-    cv::resize(drawing, drawing, {}, 0.5, 0.5);  // 显示时缩小图片尺寸
+    cv::drawChessboardCorners(drawing, pattern_size, corners_2d, success);
+    cv::resize(drawing, drawing, {}, 0.5, 0.5);
     cv::imshow("Press any to continue", drawing);
     cv::waitKey(0);
 
@@ -97,10 +115,11 @@ void load(
     cv::Mat t_world2gimbal = (cv::Mat_<double>(3, 1) << 0, 0, 0);
     cv::Mat R_world2gimbal_cv;
     cv::eigen2cv(R_world2gimbal, R_world2gimbal_cv);
+
     cv::Mat rvec, tvec;
-    auto centers_3d_ = centers_3d(pattern_size, center_distance_mm);
+    auto corners_3d_ = corners_3d(pattern_size, static_cast<float>(center_distance_mm));
     cv::solvePnP(
-      centers_3d_, centers_2d, camera_matrix, distort_coeffs, rvec, tvec, false, cv::SOLVEPNP_IPPE);
+      corners_3d_, corners_2d, camera_matrix, distort_coeffs, rvec, tvec, false, cv::SOLVEPNP_IPPE);
 
     // 记录所需的数据
     R_world2gimbal_list.emplace_back(R_world2gimbal_cv);
@@ -147,7 +166,6 @@ void print_yaml(
 
 int main(int argc, char * argv[])
 {
-  // 读取命令行参数
   cv::CommandLineParser cli(argc, argv, keys);
   if (cli.has("help")) {
     cli.printMessage();
@@ -156,7 +174,6 @@ int main(int argc, char * argv[])
   auto input_folder = cli.get<std::string>(0);
   auto config_path = cli.get<std::string>("config-path");
 
-  // 从输入文件夹中加载标定所需的数据
   std::vector<double> R_gimbal2imubody_data;
   std::vector<cv::Mat> R_world2gimbal_list, t_world2gimbal_list;
   std::vector<cv::Mat> rvecs, tvecs;
@@ -164,16 +181,14 @@ int main(int argc, char * argv[])
     input_folder, config_path, R_gimbal2imubody_data, R_world2gimbal_list, t_world2gimbal_list,
     rvecs, tvecs);
 
-  // 手眼标定
   cv::Mat R_gimbal2camera, t_gimbal2camera;
   cv::Mat R_world2board, t_world2board;
   cv::calibrateRobotWorldHandEye(
     rvecs, tvecs, R_world2gimbal_list, t_world2gimbal_list, R_world2board, t_world2board,
     R_gimbal2camera, t_gimbal2camera);
-  t_gimbal2camera /= 1e3;  // mm to m
-  t_world2board /= 1e3;    // mm to m
+  t_gimbal2camera /= 1e3;
+  t_world2board /= 1e3;
 
-  // 计算所需的数据
   cv::Mat R_camera2gimbal, t_camera2gimbal;
   cv::Mat R_board2world, t_board2world;
   cv::transpose(R_gimbal2camera, R_camera2gimbal);
@@ -181,24 +196,20 @@ int main(int argc, char * argv[])
   t_camera2gimbal = -R_camera2gimbal * t_gimbal2camera;
   t_board2world = -R_board2world * t_world2board;
 
-  // 计算相机同理想情况的偏角
   Eigen::Matrix3d R_camera2gimbal_eigen;
   cv::cv2eigen(R_camera2gimbal, R_camera2gimbal_eigen);
   Eigen::Matrix3d R_gimbal2ideal{{0, -1, 0}, {0, 0, -1}, {1, 0, 0}};
   Eigen::Matrix3d R_camera2ideal = R_gimbal2ideal * R_camera2gimbal_eigen;
-  Eigen::Vector3d camera_ypr = tools::eulers(R_camera2ideal, 1, 0, 2) * 57.3;  // degree
+  Eigen::Vector3d camera_ypr = tools::eulers(R_camera2ideal, 1, 0, 2) * 57.3;
 
-  // 计算标定板到世界坐标系原点的水平距离
   auto x = t_board2world.at<double>(0);
   auto y = t_board2world.at<double>(1);
   auto distance = std::sqrt(x * x + y * y);
 
-  // 计算标定板同竖直摆放时的偏角
   Eigen::Matrix3d R_board2world_eigen;
   cv::cv2eigen(R_board2world, R_board2world_eigen);
-  Eigen::Vector3d board_ypr = tools::eulers(R_board2world_eigen, 2, 1, 0) * 57.3;  // degree
+  Eigen::Vector3d board_ypr = tools::eulers(R_board2world_eigen, 2, 1, 0) * 57.3;
 
-  // 输出yaml
   print_yaml(
     R_gimbal2imubody_data, R_camera2gimbal, t_camera2gimbal, camera_ypr, distance, board_ypr);
 }
