@@ -4,6 +4,8 @@
 
 #include "io/camera.hpp"
 #include "io/dm_imu/dm_imu.hpp"
+#include "io/gimbal/gimbal.hpp"
+#include "io/ros2/ros2.hpp"
 #include "tasks/auto_aim/aimer.hpp"
 #include "tasks/auto_aim/multithread/commandgener.hpp"
 #include "tasks/auto_aim/multithread/mt_detector.hpp"
@@ -43,6 +45,7 @@ int main(int argc, char * argv[])
 
   io::Gimbal gimbal(config_path);
   io::Camera camera(config_path);
+  io::ROS2 ros2;
 
   auto_aim::YOLO yolo(config_path, true);
   auto_aim::Solver solver(config_path);
@@ -84,6 +87,25 @@ int main(int argc, char * argv[])
         std::this_thread::sleep_for(10ms);
       } else
         std::this_thread::sleep_for(200ms);
+    }
+  });
+
+  auto ros_thread = std::thread([&]() {
+    while (!quit) {
+      ros2.publish(gimbal.game_status());
+      ros2.publish(gimbal.event_data());
+      ros2.publish(gimbal.robot_status());
+      ros2.publish(gimbal.hurt_data());
+      ros2.publish(gimbal.sentry_info());
+      ros2.publish(gimbal.rfid_status());
+      ros2.publish(gimbal.robot_pos());
+      ros2.publish(gimbal.ground_robot_pos());
+      ros2.publish(gimbal.game_robot_hp());
+
+      ros2.spin_some();
+      
+      gimbal.send(0, ros2.getChassisStatus(), ros2.getSentryStatus(), ros2.getCmdVelX(), ros2.getCmdVelY());
+      std::this_thread::sleep_for(20ms);
     }
   });
 

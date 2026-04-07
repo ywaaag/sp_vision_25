@@ -1,36 +1,100 @@
 #include "ros2.hpp"
-namespace io
-{
+
+namespace io {
+
 ROS2::ROS2()
 {
-  rclcpp::init(0, nullptr);
+    rclcpp::init(0, nullptr);
 
-  publish2nav_ = std::make_shared<Publish2Nav>();
+    publishrefeedata_ = std::make_shared<PublishRefereeData>();
+    subscribenavcmd_ = std::make_shared<SubscribeNavCmd>();
 
-  subscribe2nav_ = std::make_shared<Subscribe2Nav>();
+    executor_.add_node(publishrefeedata_);
+    executor_.add_node(subscribenavcmd_);
 
-  publish_spin_thread_ = std::make_unique<std::thread>([this]() { publish2nav_->start(); });
-
-  subscribe_spin_thread_ = std::make_unique<std::thread>([this]() { subscribe2nav_->start(); });
+    RCLCPP_INFO(rclcpp::get_logger("ROS2"), "ROS2 initialized.");
 }
 
 ROS2::~ROS2()
 {
-  rclcpp::shutdown();
-  publish_spin_thread_->join();
-  subscribe_spin_thread_->join();
+    executor_.remove_node(publishrefeedata_);
+    executor_.remove_node(subscribenavcmd_);
+    rclcpp::shutdown();
 }
 
-void ROS2::publish(const Eigen::Vector4d & target_pos) { publish2nav_->send_data(target_pos); }
-
-std::vector<int8_t> ROS2::subscribe_enemy_status()
+void ROS2::publish(const GameStatusPackage::data & pkg)
 {
-  return subscribe2nav_->subscribe_enemy_status();
+    publishrefeedata_->publishGameStatus(pkg);
 }
 
-std::vector<int8_t> ROS2::subscribe_autoaim_target()
+void ROS2::publish(const EventDataPackage::data & pkg)
 {
-  return subscribe2nav_->subscribe_autoaim_target();
+    publishrefeedata_->publishEventData(pkg);
+}
+
+void ROS2::publish(const RobotStatusPackage::data & pkg)
+{
+    publishrefeedata_->publishRobotStatus(pkg);
+}
+
+void ROS2::publish(const HurtDataPackage::data & pkg)
+{
+    publishrefeedata_->publishHurtData(pkg);
+}
+
+void ROS2::publish(const SentryInfoPackage::data & pkg)
+{
+    publishrefeedata_->publishSentryInfo(pkg);
+}
+
+void ROS2::publish(const RfidStatusPackage::data & pkg)
+{
+    publishrefeedata_->publishRfidStatus(pkg);
+}
+
+void ROS2::publish(const RobotPosPackage::data & pkg)
+{
+    publishrefeedata_->publishRobotPos(pkg);
+}
+
+void ROS2::publish(const GroundRobotPositionPackage::data & pkg)
+{
+    publishrefeedata_->publishGroundRobotPosition(pkg);
+}
+
+void ROS2::publish(const GameRobotHpPackage::data & pkg)
+{
+    publishrefeedata_->publishGameRobotHp(pkg);
+}
+
+uint8_t ROS2::getChassisStatus()
+{
+    return subscribenavcmd_->getChassisStatus();
+}
+
+uint8_t ROS2::getSentryStatus()
+{
+    return subscribenavcmd_->getSentryStatus();
+}
+
+float ROS2::getCmdVelX()
+{
+    return subscribenavcmd_->getCmdVelX();
+}
+
+float ROS2::getCmdVelY()
+{
+    return subscribenavcmd_->getCmdVelY();
+}
+
+float ROS2::getCmdVelZ()
+{
+    return subscribenavcmd_->getCmdVelZ();
+}
+
+void ROS2::spin_some()
+{
+    executor_.spin_some();
 }
 
 }  // namespace io
