@@ -25,7 +25,7 @@ struct __attribute__((packed)) GimbalToVision
   float pitch_vel;
   float bullet_speed;
   uint16_t bullet_count;  // 子弹累计发送次数
-  uint8_t tail = 0xff;
+  uint16_t crc16;      // CRC16校验码
 };
 
 static_assert(sizeof(GimbalToVision) <= 64);
@@ -40,7 +40,7 @@ struct __attribute__((packed)) VisionToGimbal
   float pitch;
   float pitch_vel;
   float pitch_acc;
-  uint8_t tail = 0xff;
+  uint16_t crc16;      // CRC16校验码
 };
 
 static_assert(sizeof(VisionToGimbal) <= 64);

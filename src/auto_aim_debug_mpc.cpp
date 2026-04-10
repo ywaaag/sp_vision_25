@@ -36,7 +36,7 @@ int main(int argc, char * argv[])
     cli.printMessage();
     return 0;
   }
-
+  
   io::Gimbal gimbal(config_path);
   io::Camera camera(config_path);
 
@@ -83,6 +83,9 @@ int main(int argc, char * argv[])
       data["plan_pitch"] = plan.pitch;
       data["plan_pitch_vel"] = plan.pitch_vel;
       data["plan_pitch_acc"] = plan.pitch_acc;
+
+      data["yaw_error"] = gs.yaw - plan.target_yaw;
+      data["pitch_error"] = gs.pitch - plan.target_pitch;
 
       data["fire"] = plan.fire ? 1 : 0;
       data["fired"] = fired ? 1 : 0;
