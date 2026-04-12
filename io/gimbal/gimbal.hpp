@@ -161,10 +161,15 @@ public:
 
 private:
   serial::Serial serial_;
+  mutable std::mutex serial_mutex_;
 
   std::thread thread_;
   std::atomic<bool> quit_ = false;
   mutable std::mutex mutex_;
+  mutable std::mutex write_warn_mutex_;
+  bool reconnecting_ = false;
+  std::chrono::steady_clock::time_point last_write_warn_time_{
+    std::chrono::steady_clock::time_point::min()};
 
   GimbalToVision rx_data_;
   RefereePackage1 referee_package1_;
@@ -178,6 +183,8 @@ private:
     queue_{1000};
 
   bool read(uint8_t * buffer, size_t size);
+  bool write_raw(const uint8_t * data, size_t size);
+  void log_write_warn_throttled(const std::string & msg);
   void read_thread();
   void reconnect();
 };

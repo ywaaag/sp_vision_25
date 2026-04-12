@@ -154,11 +154,7 @@ void Gimbal::send(io::VisionToGimbal VisionToGimbal)
   tools::append_check_sum(
     reinterpret_cast<uint8_t *>(&tx_data_v_), sizeof(tx_data_v_));
 
-  try {
-    serial_.write(reinterpret_cast<uint8_t *>(&tx_data_v_), sizeof(tx_data_v_));
-  } catch (const std::exception & e) {
-    tools::logger()->warn("[Gimbal] Failed to write serial: {}", e.what());
-  }
+  write_raw(reinterpret_cast<uint8_t *>(&tx_data_v_), sizeof(tx_data_v_));
 }
 
 /**
@@ -182,11 +178,7 @@ void Gimbal::send(io::NavToGimbal NavToGimbal)
   tools::append_check_sum(
     reinterpret_cast<uint8_t *>(&tx_data_n_), sizeof(tx_data_n_));
 
-  try {
-    serial_.write(reinterpret_cast<uint8_t *>(&tx_data_n_), sizeof(tx_data_n_));
-  } catch (const std::exception & e) {
-    tools::logger()->warn("[Gimbal] Failed to write serial: {}", e.what());
-  }
+  write_raw(reinterpret_cast<uint8_t *>(&tx_data_n_), sizeof(tx_data_n_));
 }
 
 /**
@@ -222,11 +214,7 @@ void Gimbal::send(
   tools::append_check_sum(
     reinterpret_cast<uint8_t *>(&tx_data_v_), sizeof(tx_data_v_));
 
-  try {
-    serial_.write(reinterpret_cast<uint8_t *>(&tx_data_v_), sizeof(tx_data_v_));
-  } catch (const std::exception & e) {
-    tools::logger()->warn("[Gimbal] Failed to write serial: {}", e.what());
-  }
+  write_raw(reinterpret_cast<uint8_t *>(&tx_data_v_), sizeof(tx_data_v_));
 }
 
 /**
@@ -258,17 +246,15 @@ void Gimbal::send(
   tools::append_check_sum(
     reinterpret_cast<uint8_t *>(&tx_data_n_), sizeof(tx_data_n_));
   
-  try {
-    serial_.write(reinterpret_cast<uint8_t *>(&tx_data_n_), sizeof(tx_data_n_));
-  } catch (const std::exception & e) {
-    tools::logger()->warn("[Gimbal] Failed to write serial: {}", e.what());
-  }
+  write_raw(reinterpret_cast<uint8_t *>(&tx_data_n_), sizeof(tx_data_n_));
 
 }
 
 bool Gimbal::read(uint8_t * buffer, size_t size)
 {
   try {
+    std::lock_guard<std::mutex> lock(serial_mutex_);
+    if (reconnecting_ || !serial_.isOpen()) return false;
     return serial_.read(buffer, size) == size;
   } catch (const std::exception & e) {
     // tools::logger()->warn("[Gimbal] Failed to read serial: {}", e.what());
@@ -276,25 +262,63 @@ bool Gimbal::read(uint8_t * buffer, size_t size)
   }
 }
 
+bool Gimbal::write_raw(const uint8_t * data, size_t size)
+{
+  try {
+    std::lock_guard<std::mutex> lock(serial_mutex_);
+    if (reconnecting_ || !serial_.isOpen()) {
+      log_write_warn_throttled("[Gimbal] Serial not ready, command dropped.");
+      return false;
+    }
+    serial_.write(data, size);
+    return true;
+  } catch (const std::exception & e) {
+    log_write_warn_throttled(std::string("[Gimbal] Failed to write serial: ") + e.what());
+    return false;
+  }
+}
+
+void Gimbal::log_write_warn_throttled(const std::string & msg)
+{
+  auto now = std::chrono::steady_clock::now();
+  std::lock_guard<std::mutex> lock(write_warn_mutex_);
+  if (now - last_write_warn_time_ < std::chrono::milliseconds(500)) return;
+  last_write_warn_time_ = now;
+  tools::logger()->warn("{}", msg);
+}
+
 void Gimbal::read_thread()
 {
   tools::logger()->info("[Gimbal] read_thread started.");
-  int error_count = 0;
+  const auto reconnect_timeout = std::chrono::seconds(2);
+  auto first_error_time = std::chrono::steady_clock::time_point::min();
+
+  auto mark_error = [&]() {
+    auto now = std::chrono::steady_clock::now();
+    if (first_error_time == std::chrono::steady_clock::time_point::min()) {
+      first_error_time = now;
+      return;
+    }
+
+    if (now - first_error_time >= reconnect_timeout) {
+      tools::logger()->warn("[Gimbal] Serial read abnormal for too long, attempting to reconnect...");
+      reconnect();
+      first_error_time = std::chrono::steady_clock::time_point::min();
+    }
+  };
+
+  auto clear_error = [&]() { first_error_time = std::chrono::steady_clock::time_point::min(); };
 
   while (!quit_) {
-    if (error_count > 5000) {
-      error_count = 0;
-      tools::logger()->warn("[Gimbal] Too many errors, attempting to reconnect...");
-      reconnect();
-      continue;
-    }
-
     if (!read(reinterpret_cast<uint8_t *>(&rx_data_), sizeof(rx_data_.head))) {
-      error_count++;
+      mark_error();
       continue;
     }
 
-    if (rx_data_.head[0] != 0x5A) continue;
+    if (rx_data_.head[0] != 0x5A) {
+      mark_error();
+      continue;
+    }
 
     switch (rx_data_.head[1]) {
       case 0x01:  {
@@ -303,13 +327,13 @@ void Gimbal::read_thread()
         if (!read(
               reinterpret_cast<uint8_t *>(&rx_data_) + sizeof(rx_data_.head),
               sizeof(rx_data_) - sizeof(rx_data_.head))) {
-          error_count++;
+          mark_error();
           continue;
         }
 
         if (rx_data_.tail != 0x55) {
           tools::logger()->warn("[Gimbal] Invalid tail: {:02X}", rx_data_.tail);
-          error_count++;
+          mark_error();
           continue;
         }
 
@@ -317,11 +341,11 @@ void Gimbal::read_thread()
               reinterpret_cast<uint8_t *>(&rx_data_),
               sizeof(rx_data_))) {
           tools::logger()->warn("[Gimbal] Invalid check sum");
-          error_count++;
+          mark_error();
           continue;
         }
 
-        error_count = 0;
+        clear_error();
         Eigen::Quaterniond q(rx_data_.q[0], rx_data_.q[1], rx_data_.q[2], rx_data_.q[3]);
         queue_.push({q, t});
 
@@ -362,13 +386,13 @@ void Gimbal::read_thread()
         if (!read(
               reinterpret_cast<uint8_t *>(&referee_package1_) + sizeof(referee_package1_.head),
               sizeof(referee_package1_) - sizeof(referee_package1_.head))) {
-          error_count++;
+          mark_error();
           continue;
         }
 
         if (referee_package1_.tail != 0x55) {
           tools::logger()->warn("[Gimbal] Invalid tail in referee package 1: {:02X}", referee_package1_.tail);
-          error_count++;
+          mark_error();
           continue;
         }
 
@@ -376,10 +400,11 @@ void Gimbal::read_thread()
               reinterpret_cast<uint8_t *>(&referee_package1_),
               sizeof(referee_package1_))) {
           tools::logger()->warn("[Gimbal] Invalid check sum in referee package 1");
-          error_count++;
+          mark_error();
           continue;
         }
 
+        clear_error();
         break;
       }
       case 0x03: {
@@ -389,13 +414,13 @@ void Gimbal::read_thread()
         if (!read(
               reinterpret_cast<uint8_t *>(&referee_package2_) + sizeof(referee_package2_.head),
               sizeof(referee_package2_) - sizeof(referee_package2_.head))) {
-          error_count++;
+          mark_error();
           continue;
         }
 
         if (referee_package2_.tail != 0x55) {
           tools::logger()->warn("[Gimbal] Invalid tail in referee package 2: {:02X}", referee_package2_.tail);
-          error_count++;
+          mark_error();
           continue;
         }
 
@@ -403,15 +428,16 @@ void Gimbal::read_thread()
               reinterpret_cast<uint8_t *>(&referee_package2_),
               sizeof(referee_package2_))) {
           tools::logger()->warn("[Gimbal] Invalid check sum in referee package 2");
-          error_count++;
+          mark_error();
           continue;
         }
 
+        clear_error();
         break;
       }
       default:  {
         tools::logger()->warn("[Gimbal] Invalid package head");
-        error_count++;
+        mark_error();
         continue;
       }
     }
@@ -423,16 +449,27 @@ void Gimbal::read_thread()
 void Gimbal::reconnect()
 {
   int max_retry_count = 10;
+  {
+    std::lock_guard<std::mutex> lock(serial_mutex_);
+    reconnecting_ = true;
+  }
+
   for (int i = 0; i < max_retry_count && !quit_; ++i) {
     tools::logger()->warn("[Gimbal] Reconnecting serial, attempt {}/{}...", i + 1, max_retry_count);
     try {
-      serial_.close();
+      {
+        std::lock_guard<std::mutex> lock(serial_mutex_);
+        if (serial_.isOpen()) serial_.close();
+      }
       std::this_thread::sleep_for(std::chrono::seconds(1));
     } catch (...) {
     }
 
     try {
-      serial_.open();  // 尝试重新打开
+      {
+        std::lock_guard<std::mutex> lock(serial_mutex_);
+        serial_.open();  // 尝试重新打开
+      }
       queue_.clear();
       tools::logger()->info("[Gimbal] Reconnected serial successfully.");
       break;
@@ -440,6 +477,11 @@ void Gimbal::reconnect()
       tools::logger()->warn("[Gimbal] Reconnect failed: {}", e.what());
       std::this_thread::sleep_for(std::chrono::seconds(1));
     }
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(serial_mutex_);
+    reconnecting_ = false;
   }
 }
 
