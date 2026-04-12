@@ -101,6 +101,8 @@ int main(int argc, char * argv[])
       ros2.publish(gimbal.robot_pos());
       ros2.publish(gimbal.ground_robot_pos());
       ros2.publish(gimbal.game_robot_hp());
+      auto gs = gimbal.state();
+      ros2.publish(gs.yaw, gs.pitch, gs.yaw_diff);
 
       ros2.spin_some();
       

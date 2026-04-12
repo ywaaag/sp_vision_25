@@ -22,6 +22,8 @@ PublishRefereeData::PublishRefereeData() : Node("referee_publisher")
     create_publisher<combat_rm_interfaces::msg::RfidStatus>("referee/rfid_status", qos);
   ground_robot_position_pub_ = create_publisher<combat_rm_interfaces::msg::GroundRobotPosition>(
     "referee/ground_robot_position", qos);
+  sentry_gimbal_pub_ =
+    create_publisher<combat_rm_interfaces::msg::SentryGimbal>("/sentry_gimbal", qos);
   sentry_info_pub_ =
     create_publisher<combat_rm_interfaces::msg::SentryInfo>("referee/sentry_info", qos);
 
@@ -112,6 +114,15 @@ void PublishRefereeData::publishGroundRobotPosition(const GroundRobotPositionPac
   ground_robot_position_msg_.standard_4_position.y = pkg.standard_4_y;
 
   ground_robot_position_pub_->publish(ground_robot_position_msg_);
+}
+
+void PublishRefereeData::publishSentryGimbal(float yaw, float pitch, float yaw_diff)
+{
+  sentry_gimbal_msg_.yaw = yaw;
+  sentry_gimbal_msg_.pitch = pitch;
+  sentry_gimbal_msg_.yaw_diff = yaw_diff;
+
+  sentry_gimbal_pub_->publish(sentry_gimbal_msg_);
 }
 
 void PublishRefereeData::publishSentryInfo(const SentryInfoPackage::data & pkg)

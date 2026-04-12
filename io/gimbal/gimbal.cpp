@@ -353,6 +353,7 @@ void Gimbal::read_thread()
 
         state_.yaw = rx_data_.yaw;
         state_.yaw_vel = rx_data_.yaw_vel;
+        state_.yaw_diff = rx_data_.yaw_diff;
         state_.pitch = rx_data_.pitch;
         state_.pitch_vel = rx_data_.pitch_vel;
         state_.bullet_speed = rx_data_.bullet_speed;

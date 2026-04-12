@@ -22,6 +22,7 @@ public:
     void publish(const RobotPosPackage::data & pkg);
     void publish(const GroundRobotPositionPackage::data & pkg);
     void publish(const GameRobotHpPackage::data & pkg);
+    void publish(float yaw, float pitch, float yaw_diff);
 
     uint8_t getChassisStatus();
     uint8_t getSentryStatus();
