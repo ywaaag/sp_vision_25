@@ -160,6 +160,7 @@ int main(int argc, char * argv[])
   }
 
   quit = true;
+  if (ros_thread.joinable()) ros_thread.join();
   if (plan_thread.joinable()) plan_thread.join();
   gimbal.send(false, false, 0, 0, 0, 0, 0, 0);
 

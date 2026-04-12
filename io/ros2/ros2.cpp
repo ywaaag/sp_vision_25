@@ -4,22 +4,36 @@ namespace io {
 
 ROS2::ROS2()
 {
-    rclcpp::init(0, nullptr);
+    if (!rclcpp::ok()) {
+        rclcpp::init(0, nullptr);
+        owns_rclcpp_ = true;
+    }
+
+    executor_ = std::make_unique<rclcpp::executors::MultiThreadedExecutor>();
 
     publishrefeedata_ = std::make_shared<PublishRefereeData>();
     subscribenavcmd_ = std::make_shared<SubscribeNavCmd>();
 
-    executor_.add_node(publishrefeedata_);
-    executor_.add_node(subscribenavcmd_);
+    executor_->add_node(publishrefeedata_);
+    executor_->add_node(subscribenavcmd_);
 
     RCLCPP_INFO(rclcpp::get_logger("ROS2"), "ROS2 initialized.");
 }
 
 ROS2::~ROS2()
 {
-    executor_.remove_node(publishrefeedata_);
-    executor_.remove_node(subscribenavcmd_);
-    rclcpp::shutdown();
+    if (executor_) {
+        if (publishrefeedata_) executor_->remove_node(publishrefeedata_);
+        if (subscribenavcmd_) executor_->remove_node(subscribenavcmd_);
+    }
+
+    publishrefeedata_.reset();
+    subscribenavcmd_.reset();
+    executor_.reset();
+
+    if (owns_rclcpp_ && rclcpp::ok()) {
+        rclcpp::shutdown();
+    }
 }
 
 void ROS2::publish(const GameStatusPackage::data & pkg)
@@ -94,7 +108,9 @@ float ROS2::getCmdVelZ()
 
 void ROS2::spin_some()
 {
-    executor_.spin_some();
+    if (executor_) {
+        executor_->spin_some();
+    }
 }
 
 }  // namespace io

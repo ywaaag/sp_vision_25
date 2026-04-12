@@ -1,4 +1,6 @@
 #pragma once
+#include <memory>
+
 #include "rclcpp/rclcpp.hpp"
 #include "publishrefereedata.hpp"
 #include "subscribenavcmd.hpp"
@@ -30,7 +32,8 @@ public:
     void spin_some();
 
 private:
-    rclcpp::executors::MultiThreadedExecutor executor_;
+    std::unique_ptr<rclcpp::executors::MultiThreadedExecutor> executor_;
+    bool owns_rclcpp_ = false;
 
     std::shared_ptr<PublishRefereeData> publishrefeedata_;
     std::shared_ptr<SubscribeNavCmd> subscribenavcmd_;
