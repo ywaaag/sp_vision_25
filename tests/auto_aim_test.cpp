@@ -9,6 +9,7 @@
 #include "tasks/auto_aim/solver.hpp"
 #include "tasks/auto_aim/tracker.hpp"
 #include "tasks/auto_aim/yolo.hpp"
+#include "tasks/auto_aim/yolos/yolov5_trt.hpp"
 #include "tools/exiter.hpp"
 #include "tools/img_tools.hpp"
 #include "tools/logger.hpp"
@@ -43,7 +44,7 @@ int main(int argc, char * argv[])
   cv::VideoCapture video(video_path);
   std::ifstream text(text_path);
 
-  auto_aim::YOLO yolo(config_path);
+  auto_aim::YOLO yolo(config_path, false);
   auto_aim::Solver solver(config_path);
   auto_aim::Tracker tracker(config_path, solver);
   auto_aim::Aimer aimer(config_path);
@@ -188,8 +189,8 @@ int main(int argc, char * argv[])
 
     plotter.plot(data);
 
-    cv::resize(img, img, {}, 0.5, 0.5);  // 显示时缩小图片尺寸
-    cv::imshow("reprojection", img);
+    //cv::resize(img, img, {}, 0.5, 0.5);  // 显示时缩小图片尺寸
+    //cv::imshow("reprojection", img);
     auto key = cv::waitKey(30);
     if (key == 'q') break;
   }

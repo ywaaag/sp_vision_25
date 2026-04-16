@@ -64,6 +64,7 @@ target_link_libraries(split_video ${OpenCV_LIBS} fmt::fmt tools)
 
 ##################tests##################
 add_executable(auto_aim_test tests/auto_aim_test.cpp)
+add_executable(yolov5_trt_test tests/yolov5_trt_test.cpp)
 add_executable(auto_buff_test tests/auto_buff_test.cpp)
 add_executable(camera_detect_test tests/camera_detect_test.cpp)
 add_executable(camera_test tests/camera_test.cpp)
@@ -80,6 +81,7 @@ add_executable(dm_test tests/dm_test.cpp)
 add_executable(minimum_vision_system tests/minimum_vision_system.cpp)
 
 target_link_libraries(auto_aim_test ${OpenCV_LIBS} fmt::fmt yaml-cpp tools io auto_aim)
+target_link_libraries(yolov5_trt_test ${OpenCV_LIBS} fmt::fmt yaml-cpp tools auto_aim)
 target_link_libraries(auto_buff_test ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_buff tools io)
 target_link_libraries(camera_detect_test ${OpenCV_LIBS} fmt::fmt yaml-cpp tools auto_aim io)
 target_link_libraries(camera_test ${OpenCV_LIBS} fmt::fmt tools io)

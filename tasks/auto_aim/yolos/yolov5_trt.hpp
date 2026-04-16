@@ -17,6 +17,19 @@ namespace auto_aim
 class YOLOV5TRT : public YOLOBase
 {
 public:
+  struct TimingProfile
+  {
+    bool valid = false;
+    double preprocess_ms = 0.0;
+    double input_pack_ms = 0.0;
+    double h2d_ms = 0.0;
+    double gpu_compute_ms = 0.0;
+    double d2h_ms = 0.0;
+    double infer_ms = 0.0;
+    double postprocess_ms = 0.0;
+    double total_ms = 0.0;
+  };
+
   YOLOV5TRT(const std::string & config_path, bool debug);
   ~YOLOV5TRT();
 
@@ -24,6 +37,8 @@ public:
 
   std::list<Armor> postprocess(
     double scale, cv::Mat & output, const cv::Mat & bgr_img, int frame_count) override;
+
+  const TimingProfile & last_profile() const;
 
 private:
   struct Impl;
@@ -42,6 +57,7 @@ private:
   cv::Rect roi_;
   cv::Point2f offset_;
   cv::Mat tmp_img_;
+  TimingProfile last_profile_;
 
   Detector detector_;
   std::unique_ptr<Impl> impl_;
