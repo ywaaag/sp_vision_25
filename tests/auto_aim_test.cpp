@@ -17,14 +17,13 @@
 #include "tools/plotter.hpp"
 
 const std::string keys =
-  "{help h usage ? |                   | 输出命令行参数说明 }"
-  "{config-path c  | configs/demo.yaml | yaml配置文件的路径}"
-  "{start-index s  | 0                 | 视频起始帧下标    }"
-  "{end-index e    | 0                 | 视频结束帧下标    }"
-  "{@input-path    | assets/demo/demo  | avi和txt文件的路径}";
+    "{help h usage ? |                   | 输出命令行参数说明 }"
+    "{config-path c  | configs/demo.yaml | yaml配置文件的路径}"
+    "{start-index s  | 0                 | 视频起始帧下标    }"
+    "{end-index e    | 0                 | 视频结束帧下标    }"
+    "{@input-path    | assets/demo/demo  | avi和txt文件的路径}";
 
-int main(int argc, char * argv[])
-{
+int main(int argc, char *argv[]) {
   // 读取命令行参数
   cv::CommandLineParser cli(argc, argv, keys);
   if (cli.has("help")) {
@@ -44,7 +43,7 @@ int main(int argc, char * argv[])
   cv::VideoCapture video(video_path);
   std::ifstream text(text_path);
 
-  auto_aim::YOLO yolo(config_path, false);
+  auto_aim::YOLOV5TRT yolo(config_path, false);
   auto_aim::Solver solver(config_path);
   auto_aim::Tracker tracker(config_path, solver);
   auto_aim::Aimer aimer(config_path);
@@ -63,10 +62,12 @@ int main(int argc, char * argv[])
   }
 
   for (int frame_count = start_index; !exiter.exit(); frame_count++) {
-    if (end_index > 0 && frame_count > end_index) break;
+    if (end_index > 0 && frame_count > end_index)
+      break;
 
     video.read(img);
-    if (img.empty()) break;
+    if (img.empty())
+      break;
 
     double t, w, x, y, z;
     text >> t >> w >> x >> y >> z;
@@ -85,41 +86,41 @@ int main(int argc, char * argv[])
     auto aimer_start = std::chrono::steady_clock::now();
     auto command = aimer.aim(targets, timestamp, 27, false);
 
-    if (
-      !targets.empty() && aimer.debug_aim_point.valid &&
-      std::abs(command.yaw - last_command.yaw) * 57.3 < 2)
+    if (!targets.empty() && aimer.debug_aim_point.valid &&
+        std::abs(command.yaw - last_command.yaw) * 57.3 < 2)
       command.shoot = true;
 
-    if (command.control) last_command = command;
+    if (command.control)
+      last_command = command;
     /// 调试输出
 
     auto finish = std::chrono::steady_clock::now();
     tools::logger()->info(
-      "[{}] yolo: {:.1f}ms, tracker: {:.1f}ms, aimer: {:.1f}ms", frame_count,
-      tools::delta_time(tracker_start, yolo_start) * 1e3,
-      tools::delta_time(aimer_start, tracker_start) * 1e3,
-      tools::delta_time(finish, aimer_start) * 1e3);
+        "[{}] yolo: {:.1f}ms, tracker: {:.1f}ms, aimer: {:.1f}ms", frame_count,
+        tools::delta_time(tracker_start, yolo_start) * 1e3,
+        tools::delta_time(aimer_start, tracker_start) * 1e3,
+        tools::delta_time(finish, aimer_start) * 1e3);
 
-    tools::draw_text(
-      img,
-      fmt::format(
-        "command is {},{:.2f},{:.2f},shoot:{}", command.control, command.yaw * 57.3,
-        command.pitch * 57.3, command.shoot),
-      {10, 60}, {154, 50, 205});
+    tools::draw_text(img,
+                     fmt::format("command is {},{:.2f},{:.2f},shoot:{}",
+                                 command.control, command.yaw * 57.3,
+                                 command.pitch * 57.3, command.shoot),
+                     {10, 60}, {154, 50, 205});
 
     Eigen::Quaternion gimbal_q = {w, x, y, z};
     tools::draw_text(
-      img,
-      fmt::format(
-        "gimbal yaw{:.2f}", (tools::eulers(gimbal_q.toRotationMatrix(), 2, 1, 0) * 57.3)[0]),
-      {10, 90}, {255, 255, 255});
+        img,
+        fmt::format(
+            "gimbal yaw{:.2f}",
+            (tools::eulers(gimbal_q.toRotationMatrix(), 2, 1, 0) * 57.3)[0]),
+        {10, 90}, {255, 255, 255});
 
     nlohmann::json data;
 
     // 装甲板原始观测数据
     data["armor_num"] = armors.size();
     if (!armors.empty()) {
-      const auto & armor = armors.front();
+      const auto &armor = armors.front();
       data["armor_x"] = armor.xyz_in_world[0];
       data["armor_y"] = armor.xyz_in_world[1];
       data["armor_yaw"] = armor.ypr_in_world[0] * 57.3;
@@ -147,18 +148,19 @@ int main(int argc, char * argv[])
 
       // 当前帧target更新后
       armor_xyza_list = target.armor_xyza_list();
-      for (const Eigen::Vector4d & xyza : armor_xyza_list) {
-        auto image_points =
-          solver.reproject_armor(xyza.head(3), xyza[3], target.armor_type, target.name);
+      for (const Eigen::Vector4d &xyza : armor_xyza_list) {
+        auto image_points = solver.reproject_armor(
+            xyza.head(3), xyza[3], target.armor_type, target.name);
         tools::draw_points(img, image_points, {0, 255, 0});
       }
 
       // aimer瞄准位置
       auto aim_point = aimer.debug_aim_point;
       Eigen::Vector4d aim_xyza = aim_point.xyza;
-      auto image_points =
-        solver.reproject_armor(aim_xyza.head(3), aim_xyza[3], target.armor_type, target.name);
-      if (aim_point.valid) tools::draw_points(img, image_points, {0, 0, 255});
+      auto image_points = solver.reproject_armor(
+          aim_xyza.head(3), aim_xyza[3], target.armor_type, target.name);
+      if (aim_point.valid)
+        tools::draw_points(img, image_points, {0, 0, 255});
 
       // 观测器内部数据
       Eigen::VectorXd x = target.ekf_x();
@@ -189,10 +191,11 @@ int main(int argc, char * argv[])
 
     plotter.plot(data);
 
-    //cv::resize(img, img, {}, 0.5, 0.5);  // 显示时缩小图片尺寸
-    //cv::imshow("reprojection", img);
+    // cv::resize(img, img, {}, 0.5, 0.5);  // 显示时缩小图片尺寸
+    // cv::imshow("reprojection", img);
     auto key = cv::waitKey(30);
-    if (key == 'q') break;
+    if (key == 'q')
+      break;
   }
 
   return 0;
