@@ -72,6 +72,7 @@ int main(int argc, char * argv[])
       data["gimbal_yaw_vel"] = gs.yaw_vel;
       data["gimbal_pitch"] = gs.pitch;
       data["gimbal_pitch_vel"] = gs.pitch_vel;
+      data["yaw_diff"] = gs.yaw_diff;
 
       data["target_yaw"] = plan.target_yaw;
       data["target_pitch"] = plan.target_pitch;
@@ -110,6 +111,8 @@ int main(int argc, char * argv[])
   while (!exiter.exit()) {
     camera.read(img, t);
     auto q = gimbal.q(t-std::chrono::milliseconds(6));
+    auto gs = gimbal.state();
+    auto q_ypr = tools::eulers(q, 2, 1, 0);
 
     solver.set_R_gimbal2world(q);
     auto armors = yolo.detect(img);
@@ -120,6 +123,14 @@ int main(int argc, char * argv[])
       target_queue.push(std::nullopt);
 
     nlohmann::json data;
+    data["q_yaw"] = q_ypr[0];
+    data["q_pitch"] = q_ypr[1];
+    data["q_roll"] = q_ypr[2];
+    data["gimbal_yaw"] = gs.yaw;
+    data["gimbal_pitch"] = gs.pitch;
+    data["gimbal_yaw_err"] = tools::limit_rad(q_ypr[0] - gs.yaw);
+    data["gimbal_pitch_err"] = q_ypr[1] - gs.pitch;
+
     // 装甲板原始观测数据
     data["armor_num"] = armors.size();
     if (!armors.empty()) {
