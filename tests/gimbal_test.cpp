@@ -82,6 +82,7 @@ int main(int argc, char * argv[])
     data["q_roll"] = ypr[2];
     data["yaw"] = state.yaw;
     data["vyaw"] = state.yaw_vel;
+    data["yaw_diff"] = state.yaw_diff;
     data["pitch"] = state.pitch;
     data["vpitch"] = state.pitch_vel;
     data["bullet_speed"] = state.bullet_speed;
