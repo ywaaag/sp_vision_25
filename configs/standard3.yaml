@@ -1,5 +1,5 @@
-enemy_color: "red"
-# enemy_color: "blue"
+# enemy_color: "red"
+enemy_color: "blue"
 
 #####-----神经网络参数-----#####
 yolo_name: yolov5
@@ -49,8 +49,8 @@ max_temp_lost_count: 15
 outpost_max_temp_lost_count: 75
 
 #####-----aimer参数-----#####
-yaw_offset: 0.2 # degree -2.5
-pitch_offset: 0.0 # degree 2
+yaw_offset: 1.0 # degree -2.5
+pitch_offset: -2.0 # degree 2
 comming_angle: 55 # degree
 leaving_angle: 15 # degree
 decision_speed: 7 # rad/s
@@ -114,11 +114,14 @@ model: "assets/yolo11_buff_int8.xml"
 buff_fyt_detector:
   model: "assets/yolox_rune_3.6m.xml"
   device_type: "CPU"
-  confidence_threshold: 0.8
+  confidence_threshold: 0.7
   top_k: 128
   nms_threshold: 0.3
   detect_r_tag: true
-  min_lightness: 130
+  min_lightness: 90
+  r_tag_roi_half_size: 120
+  r_tag_max_distance: 80
+  r_tag_min_area: 12
 
 #####-----buff_aimer参数-----#####
 fire_gap_time: 0.700   # s

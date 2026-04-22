@@ -112,7 +112,7 @@ int main(int argc, char * argv[])
 
   while (!exiter.exit()) {
     camera.read(img, t);
-    auto q = gimbal.q(t - std::chrono::milliseconds(32));
+    auto q = gimbal.q(t - std::chrono::milliseconds(28));
     auto gs = gimbal.state();
     auto q_ypr = tools::eulers(q, 2, 1, 0);
 

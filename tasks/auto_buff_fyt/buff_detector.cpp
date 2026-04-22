@@ -44,15 +44,21 @@ std::optional<PowerRune> Buff_Detector::detect(cv::Mat & bgr_img)
     last_filtered_objects_.begin(), last_filtered_objects_.end(),
     [](const RuneObject & a, const RuneObject & b) { return a.prob > b.prob; });
 
+  const float prob_sum = std::accumulate(
+    last_filtered_objects_.begin(), last_filtered_objects_.end(), 0.0f,
+    [](float sum, const RuneObject & obj) { return sum + obj.prob; });
+  const cv::Point2f r_prior = std::accumulate(
+    last_filtered_objects_.begin(), last_filtered_objects_.end(), cv::Point2f(0.0f, 0.0f),
+    [prob_sum](const cv::Point2f & p, const RuneObject & obj) {
+      const float weight = prob_sum > 1e-6f ? obj.prob / prob_sum : 1.0f;
+      return p + obj.pts.r_center * weight;
+    });
+
   cv::Point2f r_center;
   if (detector_.use_r_tag()) {
-    std::tie(r_center, last_binary_roi_) =
-      detector_.detect_r_tag(bgr_img, last_filtered_objects_.front().pts.r_center);
+    std::tie(r_center, last_binary_roi_) = detector_.detect_r_tag(bgr_img, r_prior);
   } else {
-    r_center = std::accumulate(
-      last_filtered_objects_.begin(), last_filtered_objects_.end(), cv::Point2f(0.0f, 0.0f),
-      [n = static_cast<float>(last_filtered_objects_.size())](
-        const cv::Point2f & p, const RuneObject & obj) { return p + obj.pts.r_center / n; });
+    r_center = r_prior;
   }
 
   std::for_each(last_filtered_objects_.begin(), last_filtered_objects_.end(), [r_center](RuneObject & obj) {

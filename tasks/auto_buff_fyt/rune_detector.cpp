@@ -1,6 +1,8 @@
 #include "rune_detector.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <numeric>
 #include <unordered_map>
 
@@ -180,6 +182,11 @@ RuneDetector::RuneDetector(const std::string & config_path)
     node && node["nms_threshold"] ? node["nms_threshold"].as<float>() : 0.3f;
   detect_r_tag_ = node && node["detect_r_tag"] ? node["detect_r_tag"].as<bool>() : true;
   binary_thresh_ = node && node["min_lightness"] ? node["min_lightness"].as<int>() : 100;
+  r_tag_roi_half_size_ =
+    node && node["r_tag_roi_half_size"] ? node["r_tag_roi_half_size"].as<int>() : 120;
+  r_tag_max_distance_ =
+    node && node["r_tag_max_distance"] ? node["r_tag_max_distance"].as<float>() : 80.0f;
+  r_tag_min_area_ = node && node["r_tag_min_area"] ? node["r_tag_min_area"].as<float>() : 12.0f;
 
   init();
 }
@@ -266,9 +273,11 @@ std::tuple<cv::Point2f, cv::Mat> RuneDetector::detect_r_tag(
     return {prior, cv::Mat::zeros(cv::Size(200, 200), CV_8UC3)};
   }
 
+  const int roi_half_size = std::max(r_tag_roi_half_size_, 1);
   const cv::Rect roi =
     (cv::Rect(
-       static_cast<int>(prior.x) - 100, static_cast<int>(prior.y) - 100, 200, 200) &
+       static_cast<int>(std::round(prior.x)) - roi_half_size,
+       static_cast<int>(std::round(prior.y)) - roi_half_size, roi_half_size * 2, roi_half_size * 2) &
     cv::Rect(0, 0, bgr_img.cols, bgr_img.rows));
   const cv::Point2f prior_in_roi = prior - cv::Point2f(roi.tl());
 
@@ -286,21 +295,44 @@ std::tuple<cv::Point2f, cv::Mat> RuneDetector::detect_r_tag(
   std::vector<std::vector<cv::Point>> contours;
   cv::findContours(binary_img, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_NONE);
 
-  auto it = std::find_if(
-    contours.begin(), contours.end(),
-    [p = prior_in_roi](const std::vector<cv::Point> & contour) {
-      return cv::boundingRect(contour).contains(p);
-    });
-
   cv::cvtColor(binary_img, binary_img, cv::COLOR_GRAY2BGR);
-  if (it == contours.end()) return {prior, binary_img};
+  cv::circle(binary_img, prior_in_roi, 3, cv::Scalar(255, 0, 0), -1);
 
-  cv::drawContours(
-    binary_img, contours, static_cast<int>(std::distance(contours.begin(), it)),
-    cv::Scalar(0, 255, 0), 2);
+  int best_idx = -1;
+  float best_score = std::numeric_limits<float>::max();
+  bool best_contains_prior = false;
+  cv::Point2f center = prior_in_roi;
 
-  cv::Point2f center = std::accumulate(it->begin(), it->end(), cv::Point(0, 0));
-  center /= static_cast<float>(it->size());
+  for (int i = 0; i < static_cast<int>(contours.size()); ++i) {
+    const auto & contour = contours[i];
+    const float area = static_cast<float>(cv::contourArea(contour));
+    if (area < r_tag_min_area_) continue;
+
+    const cv::Moments moments = cv::moments(contour);
+    if (std::abs(moments.m00) < 1e-6) continue;
+
+    const cv::Point2f contour_center(
+      static_cast<float>(moments.m10 / moments.m00), static_cast<float>(moments.m01 / moments.m00));
+    const bool contains_prior = cv::pointPolygonTest(contour, prior_in_roi, false) >= 0.0;
+    const float distance = cv::norm(contour_center - prior_in_roi);
+
+    if (!contains_prior && distance > r_tag_max_distance_) continue;
+
+    const float score = contains_prior ? distance : distance + r_tag_max_distance_;
+    if (
+      best_idx < 0 || (contains_prior && !best_contains_prior) ||
+      (contains_prior == best_contains_prior && score < best_score))
+    {
+      best_idx = i;
+      best_score = score;
+      best_contains_prior = contains_prior;
+      center = contour_center;
+    }
+  }
+
+  if (best_idx < 0) return {prior, binary_img};
+
+  cv::drawContours(binary_img, contours, best_idx, cv::Scalar(0, 255, 0), 2);
   center += cv::Point2f(roi.tl());
   return {center, binary_img};
 }

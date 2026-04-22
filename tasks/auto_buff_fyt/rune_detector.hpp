@@ -46,6 +46,9 @@ private:
   float nms_threshold_;
   bool detect_r_tag_;
   int binary_thresh_;
+  int r_tag_roi_half_size_;
+  float r_tag_max_distance_;
+  float r_tag_min_area_;
 
   std::mutex mtx_;
   std::vector<int> strides_;

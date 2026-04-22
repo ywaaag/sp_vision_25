@@ -23,6 +23,8 @@
 - 2026-04-21 已新增 `standard_fyt_mpc`，按 `standard_mpc` 结构接入 `auto_buff_fyt` 打符检测链，保留原有自瞄、ROS 和 MPC 线程模型；当前已通过编译。
 - 2026-04-21 已修正 `auto_buff_fyt` 的 `R` 标传统矫正逻辑：`buff_fyt_detector.min_lightness` 现在真实参与二值化，默认值为 `130`；此前配置项存在但代码实际始终走 `OTSU`。
 - 2026-04-21 已新增 `auto_aim_delay_tuner`，用于固定静止装甲板场景下自动左右扫 `±30°` 并比较不同 `imu delay` 对 `target_yaw` 波动的影响，最终输出最优延迟值。
+- 2026-04-22 已修正 `tools::Recorder` 的 CFR 录像时间轴：录像现在按真实输入时间戳补帧/限帧，并让 `.avi` 与同名 `.txt` 保持逐帧对齐，避免实际采样帧率低于配置帧率时出现回放加速。
+- 2026-04-22 已下调 `buff_fyt_detector.confidence_threshold` 到 `0.5`，并增强 `R` 标修正的先验与轮廓匹配鲁棒性：`assets/demo.avi` 离线统计从 `66/196` 提升到 `78/196`，`assets/big.avi` 从 `95/250` 提升到 `217/250`。
 - `yaw_diff` 当前只透传和调试输出，尚未进入上层闭环；其真实单位、方向和零点仍需实测。
 
 ## 3. 当前待办
@@ -51,6 +53,8 @@
 暂无
 
 ## 6. 最近同步
+- **2026-04-22**: 针对 `auto_buff_fyt` 的低识别率问题，下调 `buff_fyt_detector.confidence_threshold` 至 `0.5`，并将 `R` 标修正改为使用同色候选的加权中心作为先验，同时在传统二值化轮廓中优先选包含先验的轮廓、否则回退到最近亮轮廓；离线复测 `assets/demo.avi` 为 `78/196`、`assets/big.avi` 为 `217/250`。
+- **2026-04-22**: 修正 `tools::Recorder` 的 AVI 录像时间轴。当前实现改为基于首帧时间戳建立固定输出帧率时间轴，慢于目标帧率时会补写保持帧，避免 `small.avi` / `big.avi` 这类录像因文件头 fps 固定而发生回放加速；同时 `.txt` 旁路姿态文件也改为按输出帧逐行对齐。
 - **2026-04-16**: 重整 `.agent/` 文档职责边界，把容器、X11、海康相机、`standard_mpc` / `auto_aim_debug_mpc` 的联调细节下沉到 `.agent/TROUBLESHOOTING.md`，并把 `DEVELOPMENT.md` 收回到开发规范。
 - **2026-04-15**: 在 `AGENTS.md` 增加“构建/运行/调试默认先启动并进入 Docker 容器”的元规则，并把当前容器名 `Combat_Sentry2026`、镜像 `combat_sentry_v1:latest` 与进入命令写入 `.agent/DEVELOPMENT.md`。
 - **2026-04-15**: 将全向感知 V1 的详细方案下沉到 `.agent/OMNIPERCEPTION_V1.md`，避免 `TODO.md` 混入过多设计细节。

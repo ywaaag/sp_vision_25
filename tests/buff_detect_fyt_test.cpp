@@ -73,6 +73,7 @@ int main(int argc, char * argv[])
   auto_buff_fyt::Buff_Detector detector(config_path);
   auto_buff_fyt::Solver solver(config_path);
   auto_buff_fyt::BigTarget target;
+  //auto_buff_fyt::SmallTarget target;
   auto_buff_fyt::Aimer aimer(config_path);
 
   cv::VideoCapture video(video_path);
