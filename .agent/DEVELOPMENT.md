@@ -85,6 +85,10 @@ make -C build -j$(nproc)
 make -C build auto_aim_debug_mpc
 ./build/auto_aim_debug_mpc configs/standard3.yaml
 
+# 串口自瞄姿态延迟标定（自动左右扫角）
+make -C build auto_aim_delay_tuner
+./build/auto_aim_delay_tuner configs/standard3.yaml --delay-min-ms=0 --delay-max-ms=12 --delay-step-ms=1 --scan-amplitude=30 --scan-period=2.0 --scan-duration=6.0 --settle-time=1.0
+
 # 海康相机最小化验证
 make -C build camera_test
 ./build/camera_test --config-path=configs/standard3.yaml
@@ -93,9 +97,17 @@ make -C build camera_test
 make -C build auto_buff_debug_mpc
 ./build/auto_buff_debug_mpc configs/standard3.yaml
 
+# 串口打符调试（FYT rune 检测链，带窗口）
+make -C build auto_buff_fyt_debug_mpc
+./build/auto_buff_fyt_debug_mpc configs/standard3.yaml
+
 # 标准串口主程序（无 GUI）
 make -C build standard_mpc
 ./build/standard_mpc configs/standard3.yaml
+
+# 标准串口主程序（FYT rune 检测链，无 GUI）
+make -C build standard_fyt_mpc
+./build/standard_fyt_mpc configs/standard3.yaml
 
 # CAN 单线程自瞄
 make -C build standard
@@ -108,6 +120,15 @@ make -C build mt_standard
 # 离线自瞄测试
 make -C build auto_aim_test
 ./build/auto_aim_test assets/demo/demo -c configs/demo.yaml
+
+# 离线打符检测测试
+make -C build buff_detect_test
+./build/buff_detect_test assets/demo.avi
+./build/buff_detect_test --display=false --end-index=100 assets/demo.avi
+
+# FYT rune 模型离线打符检测测试
+make -C build buff_detect_fyt_test
+./build/buff_detect_fyt_test --display=false assets/demo.avi
 ```
 - `camera_test` 默认配置是 `configs/camera.yaml`，当前仓库该文件默认走迈德威视；需要验证海康链路时，不要省略 `--config-path=configs/standard3.yaml`。
 - `standard_mpc` 是无 GUI 主程序，正常运行时不弹 `imshow` 窗口；优先通过 `logs/`、`records/` 和 `MvSdkLog/` 判断运行状态。

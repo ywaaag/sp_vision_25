@@ -1,0 +1,349 @@
+#include <fmt/core.h>
+
+#include <atomic>
+#include <chrono>
+#include <list>
+#include <nlohmann/json.hpp>
+#include <opencv2/opencv.hpp>
+#include <optional>
+#include <thread>
+
+#include "io/camera.hpp"
+#include "io/gimbal/gimbal.hpp"
+#include "io/usbcamera/usbcamera.hpp"
+#include "tasks/auto_aim/detector.hpp"
+#include "tasks/auto_aim/planner/planner.hpp"
+#include "tasks/auto_aim/solver.hpp"
+#include "tasks/auto_aim/tracker.hpp"
+#include "tasks/auto_aim/yolo.hpp"
+#include "tools/exiter.hpp"
+#include "tools/img_tools.hpp"
+#include "tools/logger.hpp"
+#include "tools/math_tools.hpp"
+#include "tools/plotter.hpp"
+#include "tools/thread_safe_queue.hpp"
+#include "tools/yaml.hpp"
+
+using namespace std::chrono_literals;
+
+namespace
+{
+constexpr auto GIMBAL_DELAY = std::chrono::milliseconds(10);
+
+enum class TargetSource
+{
+  none = 0,
+  main = 1,
+  usb_left = 2,
+  usb_right = 3
+};
+
+struct TargetCommand
+{
+  std::optional<auto_aim::Target> target = std::nullopt;
+  TargetSource source = TargetSource::none;
+};
+
+struct UsbCandidate
+{
+  auto_aim::Armor armor;
+  std::chrono::steady_clock::time_point timestamp;
+  TargetSource source;
+  double distance;
+};
+
+const char * source_name(TargetSource source)
+{
+  switch (source) {
+    case TargetSource::main:
+      return "main";
+    case TargetSource::usb_left:
+      return "usb_left";
+    case TargetSource::usb_right:
+      return "usb_right";
+    default:
+      return "none";
+  }
+}
+
+std::list<auto_aim::Armor> filter_enemy_armors(
+  std::list<auto_aim::Armor> armors, auto_aim::Color enemy_color)
+{
+  armors.remove_if([enemy_color](const auto_aim::Armor & armor) { return armor.color != enemy_color; });
+  return armors;
+}
+
+void solve_armors(std::list<auto_aim::Armor> & armors, auto_aim::Solver & solver)
+{
+  for (auto & armor : armors) solver.solve(armor);
+}
+
+std::optional<UsbCandidate> get_nearest_candidate(
+  const std::list<auto_aim::Armor> & armors, std::chrono::steady_clock::time_point timestamp,
+  TargetSource source)
+{
+  if (armors.empty()) return std::nullopt;
+
+  auto nearest = armors.front();
+  auto min_distance = nearest.xyz_in_gimbal.norm();
+  for (const auto & armor : armors) {
+    auto distance = armor.xyz_in_gimbal.norm();
+    if (distance < min_distance) {
+      min_distance = distance;
+      nearest = armor;
+    }
+  }
+
+  return UsbCandidate{nearest, timestamp, source, min_distance};
+}
+
+std::optional<UsbCandidate> select_nearest_candidate(
+  const std::list<auto_aim::Armor> & left_armors, std::chrono::steady_clock::time_point left_t,
+  const std::list<auto_aim::Armor> & right_armors, std::chrono::steady_clock::time_point right_t)
+{
+  auto left_candidate = get_nearest_candidate(left_armors, left_t, TargetSource::usb_left);
+  auto right_candidate = get_nearest_candidate(right_armors, right_t, TargetSource::usb_right);
+
+  if (!left_candidate.has_value()) return right_candidate;
+  if (!right_candidate.has_value()) return left_candidate;
+
+  return left_candidate->distance <= right_candidate->distance ? left_candidate : right_candidate;
+}
+
+}  // namespace
+
+const std::string keys =
+  "{help h usage ? |                        | 输出命令行参数说明}"
+  "{@config-path   | configs/standard3.yaml | 位置参数，yaml配置文件路径 }";
+
+int main(int argc, char * argv[])
+{
+  tools::Exiter exiter;
+  tools::Plotter plotter;
+
+  cv::CommandLineParser cli(argc, argv, keys);
+  auto config_path = cli.get<std::string>(0);
+  if (cli.has("help") || config_path.empty()) {
+    cli.printMessage();
+    return 0;
+  }
+
+  auto yaml = tools::load(config_path);
+  auto enemy_color =
+    tools::read<std::string>(yaml, "enemy_color") == "red" ? auto_aim::Color::red : auto_aim::Color::blue;
+
+  io::Gimbal gimbal(config_path);
+  io::Camera camera(config_path);
+  io::USBCamera usb_left_camera("video0", config_path);
+  io::USBCamera usb_right_camera("video2", config_path);
+
+  auto_aim::YOLO yolo(config_path, true);
+  auto_aim::Detector usb_left_detector(config_path, false);
+  auto_aim::Detector usb_right_detector(config_path, false);
+
+  auto_aim::Solver main_solver(config_path);
+  auto_aim::Solver usb_left_solver(config_path);
+  auto_aim::Solver usb_right_solver(config_path);
+
+  auto_aim::Tracker main_tracker(config_path, main_solver);
+  auto_aim::Tracker usb_left_tracker(config_path, usb_left_solver);
+  auto_aim::Tracker usb_right_tracker(config_path, usb_right_solver);
+  auto_aim::Planner planner(config_path);
+
+  tools::ThreadSafeQueue<TargetCommand, true> target_queue(1);
+  target_queue.push(TargetCommand{});
+
+  std::atomic<bool> quit = false;
+  auto plan_thread = std::thread([&]() {
+    auto t0 = std::chrono::steady_clock::now();
+    uint16_t last_bullet_count = 0;
+
+    while (!quit) {
+      auto target_command = target_queue.front();
+      auto gs = gimbal.state();
+      auto plan = planner.plan(target_command.target, gs.bullet_speed);
+
+      const bool use_yaw_diff =
+        target_command.source == TargetSource::usb_left || target_command.source == TargetSource::usb_right;
+      if (use_yaw_diff && plan.control) {
+        plan.target_yaw = tools::limit_rad(plan.target_yaw + gs.yaw_diff);
+        plan.yaw = tools::limit_rad(plan.yaw + gs.yaw_diff);
+      }
+
+      const bool fire = target_command.source == TargetSource::main && plan.fire;
+      gimbal.send(
+        plan.control, fire, plan.yaw, plan.yaw_vel, plan.yaw_acc, plan.pitch, plan.pitch_vel,
+        plan.pitch_acc);
+
+      auto fired = gs.bullet_count > last_bullet_count;
+      last_bullet_count = gs.bullet_count;
+
+      nlohmann::json data;
+      data["t"] = tools::delta_time(std::chrono::steady_clock::now(), t0);
+
+      data["gimbal_yaw"] = gs.yaw;
+      data["gimbal_yaw_vel"] = gs.yaw_vel;
+      data["gimbal_pitch"] = gs.pitch;
+      data["gimbal_pitch_vel"] = gs.pitch_vel;
+      data["yaw_diff"] = gs.yaw_diff;
+      data["active_source"] = static_cast<int>(target_command.source);
+      data["use_yaw_diff"] = use_yaw_diff ? 1 : 0;
+
+      data["target_yaw"] = plan.target_yaw;
+      data["target_pitch"] = plan.target_pitch;
+
+      data["plan_yaw"] = plan.yaw;
+      data["plan_yaw_vel"] = plan.yaw_vel;
+      data["plan_yaw_acc"] = plan.yaw_acc;
+
+      data["plan_pitch"] = plan.pitch;
+      data["plan_pitch_vel"] = plan.pitch_vel;
+      data["plan_pitch_acc"] = plan.pitch_acc;
+
+      data["fire"] = fire ? 1 : 0;
+      data["fired"] = fired ? 1 : 0;
+
+      if (target_command.target.has_value()) {
+        data["target_z"] = target_command.target->ekf_x()[4];
+        data["target_vz"] = target_command.target->ekf_x()[5];
+        data["w"] = target_command.target->ekf_x()[7];
+      } else {
+        data["w"] = 0.0;
+      }
+
+      plotter.plot(data);
+
+      std::this_thread::sleep_for(10ms);
+    }
+  });
+
+  cv::Mat img;
+  cv::Mat usb_left_img;
+  cv::Mat usb_right_img;
+  std::chrono::steady_clock::time_point t;
+  std::chrono::steady_clock::time_point usb_left_t;
+  std::chrono::steady_clock::time_point usb_right_t;
+
+  while (!exiter.exit()) {
+    camera.read(img, t);
+    usb_left_camera.read(usb_left_img, usb_left_t);
+    usb_right_camera.read(usb_right_img, usb_right_t);
+
+    auto q = gimbal.q(t - GIMBAL_DELAY);
+    auto gs = gimbal.state();
+    auto q_ypr = tools::eulers(q, 2, 1, 0);
+
+    main_solver.set_R_gimbal2world(q);
+    auto main_armors = yolo.detect(img);
+    auto main_targets = main_tracker.track(main_armors, t);
+
+    std::list<auto_aim::Armor> usb_left_armors;
+    std::list<auto_aim::Armor> usb_right_armors;
+    std::optional<UsbCandidate> usb_candidate = std::nullopt;
+    TargetCommand target_command;
+
+    if (!main_armors.empty()) {
+      if (!main_targets.empty()) {
+        target_command.target = main_targets.front();
+        target_command.source = TargetSource::main;
+      }
+    } else {
+      auto usb_left_q = gimbal.q(usb_left_t - GIMBAL_DELAY);
+      auto usb_right_q = gimbal.q(usb_right_t - GIMBAL_DELAY);
+      usb_left_solver.set_R_gimbal2world(usb_left_q);
+      usb_right_solver.set_R_gimbal2world(usb_right_q);
+
+      usb_left_armors = filter_enemy_armors(usb_left_detector.detect(usb_left_img), enemy_color);
+      usb_right_armors = filter_enemy_armors(usb_right_detector.detect(usb_right_img), enemy_color);
+
+      solve_armors(usb_left_armors, usb_left_solver);
+      solve_armors(usb_right_armors, usb_right_solver);
+      usb_candidate = select_nearest_candidate(usb_left_armors, usb_left_t, usb_right_armors, usb_right_t);
+
+      if (usb_candidate.has_value()) {
+        std::list<auto_aim::Armor> selected_armors = {usb_candidate->armor};
+        std::list<auto_aim::Target> usb_targets;
+
+        if (usb_candidate->source == TargetSource::usb_left) {
+          usb_targets = usb_left_tracker.track(selected_armors, usb_candidate->timestamp, false);
+        } else {
+          usb_targets = usb_right_tracker.track(selected_armors, usb_candidate->timestamp, false);
+        }
+
+        if (!usb_targets.empty()) {
+          target_command.target = usb_targets.front();
+          target_command.source = usb_candidate->source;
+        }
+      }
+    }
+
+    target_queue.push(target_command);
+
+    nlohmann::json data;
+    data["q_yaw"] = q_ypr[0];
+    data["q_pitch"] = q_ypr[1];
+    data["q_roll"] = q_ypr[2];
+    data["gimbal_yaw"] = gs.yaw;
+    data["gimbal_pitch"] = gs.pitch;
+    data["gimbal_yaw_err"] = tools::limit_rad(q_ypr[0] - gs.yaw);
+    data["gimbal_pitch_err"] = q_ypr[1] - gs.pitch;
+    data["main_armor_num"] = main_armors.size();
+    data["usb_left_armor_num"] = usb_left_armors.size();
+    data["usb_right_armor_num"] = usb_right_armors.size();
+    data["active_source"] = static_cast<int>(target_command.source);
+
+    if (!main_armors.empty()) {
+      const auto & armor = main_armors.front();
+      data["armor_x"] = armor.xyz_in_world[0];
+      data["armor_y"] = armor.xyz_in_world[1];
+      data["armor_z"] = armor.xyz_in_world[2];
+      data["armor_yaw"] = armor.ypr_in_world[0] * 57.3;
+      data["armor_yaw_raw"] = armor.yaw_raw * 57.3;
+      data["armor_center_x"] = armor.center_norm.x;
+      data["armor_center_y"] = armor.center_norm.y;
+    }
+
+    if (usb_candidate.has_value()) {
+      data["usb_candidate_distance"] = usb_candidate->distance;
+      data["usb_candidate_yaw"] = usb_candidate->armor.ypd_in_world[0];
+      data["usb_candidate_pitch"] = usb_candidate->armor.ypd_in_world[1];
+      data["usb_candidate_source"] = static_cast<int>(usb_candidate->source);
+    }
+
+    plotter.plot(data);
+
+    if (target_command.source == TargetSource::main && !main_targets.empty()) {
+      auto target = main_targets.front();
+
+      for (const auto & xyza : target.armor_xyza_list()) {
+        auto image_points =
+          main_solver.reproject_armor(xyza.head(3), xyza[3], target.armor_type, target.name);
+        tools::draw_points(img, image_points, {0, 255, 0});
+      }
+
+      Eigen::Vector4d aim_xyza = planner.debug_xyza;
+      auto image_points =
+        main_solver.reproject_armor(aim_xyza.head(3), aim_xyza[3], target.armor_type, target.name);
+      tools::draw_points(img, image_points, {0, 0, 255});
+    }
+
+    tools::draw_text(
+      img,
+      fmt::format(
+        "[{}] main:{} usb_l:{} usb_r:{}",
+        source_name(target_command.source), main_armors.size(), usb_left_armors.size(),
+        usb_right_armors.size()),
+      {10, 30}, {255, 255, 255});
+
+    cv::resize(img, img, {}, 0.5, 0.5);
+    cv::imshow("reprojection", img);
+    auto key = cv::waitKey(1);
+    if (key == 'q') break;
+  }
+
+  quit = true;
+  if (plan_thread.joinable()) plan_thread.join();
+  gimbal.send(false, false, 0, 0, 0, 0, 0, 0);
+
+  return 0;
+}

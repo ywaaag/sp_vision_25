@@ -23,7 +23,9 @@ using namespace std::chrono_literals;
 
 const std::string keys =
   "{help h usage ? |                        | 输出命令行参数说明}"
-  "{@config-path   | configs/standard3.yaml | 位置参数，yaml配置文件路径 }";
+  "{@config-path   | configs/standard3.yaml | 位置参数，yaml配置文件路径 }"
+  "{imu-delay-ms   | 6                      | 姿态对齐补偿毫秒数 }"
+  "{headless       | false                  | 禁用imshow，仅输出Plotter数据 }";
 
 int main(int argc, char * argv[])
 {
@@ -110,7 +112,7 @@ int main(int argc, char * argv[])
 
   while (!exiter.exit()) {
     camera.read(img, t);
-    auto q = gimbal.q(t-std::chrono::milliseconds(10));
+    auto q = gimbal.q(t - std::chrono::milliseconds(32));
     auto gs = gimbal.state();
     auto q_ypr = tools::eulers(q, 2, 1, 0);
 
@@ -162,6 +164,7 @@ int main(int argc, char * argv[])
       tools::draw_points(img, image_points, {0, 0, 255});
     }
 
+    
     cv::resize(img, img, {}, 0.5, 0.5);  // 显示时缩小图片尺寸
     cv::imshow("reprojection", img);
     auto key = cv::waitKey(1);

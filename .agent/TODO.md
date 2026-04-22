@@ -15,6 +15,14 @@
 - 2026-04-16 已确认 `auto_aim_debug_mpc configs/standard3.yaml` 的主要显示问题来自宿主机 X11 授权；在宿主机执行 `xhost +SI:localuser:root` 后，程序已能在当前容器内正常启动并持续运行。
 - 2026-04-16 当前联调焦点已经从“容器/X11/GTK 初始化失败”转移到“自瞄链路行为本身”，终端已出现 `[Tracker] Target diverged!` 等算法层日志。
 - 2026-04-15 已形成“全向感知 V1”方案，但 `tasks/omniperception` 现状仍是原型，不能直接视为串口主线可用实现。
+- 2026-04-19 `sentry_omni_perception_debug_mpc` 已接入双 USB 相机；当前逻辑是主工业相机有装甲板时完全忽略 USB，主工业相机无装甲板时用双 USB 的传统 `Detector` 结果按最近距离选候选目标，并在回退控制时叠加上行 `yaw_diff`，同时保持 `fire=false`。
+- 2026-04-21 已新增离线 `buff_detect_test`，默认使用 `configs/standard3.yaml` 检测 `assets/demo.avi` 中的 buff，并在窗口中叠加模型关键点与 `PowerRune` 几何点用于快速目检。
+- 2026-04-21 已新增 `tasks/auto_buff_fyt`，将 `rm_rune` 的 YOLOX 能量机关检测、颜色/类型筛选和 R 标修正迁入当前仓库，并保持 `auto_buff` 原有 `Target/Aimer` 预测击打链路复用。
+- 2026-04-21 已将 `buff_fyt_detector.confidence_threshold` 收紧到 `0.7`，并把 `buff_detect_fyt_test` 的统计/绘制口径固定为颜色过滤后的候选；实测 `buff_detect_fyt_test --display=false assets/demo.avi` 时整段 `196` 帧中模型命中 `66` 帧，进入原有解算/跟踪链路 `61` 帧。
+- 2026-04-21 已新增 `auto_buff_fyt_debug_mpc`，按 `auto_buff_debug_mpc` 结构接入 `auto_buff_fyt` 检测链，并在窗口中叠加 FYT rune 候选框、R 标二值 ROI 与原有 buff 重投影调试信息。
+- 2026-04-21 已新增 `standard_fyt_mpc`，按 `standard_mpc` 结构接入 `auto_buff_fyt` 打符检测链，保留原有自瞄、ROS 和 MPC 线程模型；当前已通过编译。
+- 2026-04-21 已修正 `auto_buff_fyt` 的 `R` 标传统矫正逻辑：`buff_fyt_detector.min_lightness` 现在真实参与二值化，默认值为 `130`；此前配置项存在但代码实际始终走 `OTSU`。
+- 2026-04-21 已新增 `auto_aim_delay_tuner`，用于固定静止装甲板场景下自动左右扫 `±30°` 并比较不同 `imu delay` 对 `target_yaw` 波动的影响，最终输出最优延迟值。
 - `yaw_diff` 当前只透传和调试输出，尚未进入上层闭环；其真实单位、方向和零点仍需实测。
 
 ## 3. 当前待办
@@ -46,5 +54,10 @@
 - **2026-04-16**: 重整 `.agent/` 文档职责边界，把容器、X11、海康相机、`standard_mpc` / `auto_aim_debug_mpc` 的联调细节下沉到 `.agent/TROUBLESHOOTING.md`，并把 `DEVELOPMENT.md` 收回到开发规范。
 - **2026-04-15**: 在 `AGENTS.md` 增加“构建/运行/调试默认先启动并进入 Docker 容器”的元规则，并把当前容器名 `Combat_Sentry2026`、镜像 `combat_sentry_v1:latest` 与进入命令写入 `.agent/DEVELOPMENT.md`。
 - **2026-04-15**: 将全向感知 V1 的详细方案下沉到 `.agent/OMNIPERCEPTION_V1.md`，避免 `TODO.md` 混入过多设计细节。
+- **2026-04-19**: 新增 `sentry_omni_perception_debug_mpc` 调试入口的双 USB 回退链路，当前版本使用传统 `Detector` 做左右 USB 候选，按最近距离选择回退目标，并在 USB 回退下发时叠加 `yaw_diff`。
+- **2026-04-21**: 新增 `buff_detect_test` 离线测试入口，默认走 `configs/standard3.yaml` 和 `assets/demo.avi`，用于单独验证 `auto_buff` 模型检测并可视化识别结果。
+- **2026-04-21**: 新增 `auto_buff_fyt` 模块与 `buff_detect_fyt_test`，移植 `rm_rune` 的 YOLOX 打符识别逻辑并在 `assets/demo.avi` 上完成离线验证。
+- **2026-04-21**: 新增 `auto_buff_fyt_debug_mpc` 调试入口，用于在线联调 `auto_buff_fyt` 检测链和原有 MPC 打符链路。
+- **2026-04-21**: 新增 `standard_fyt_mpc` 主程序入口，用于在 `standard_mpc` 主线上切换到 `auto_buff_fyt` 打符检测链。
 
 ---

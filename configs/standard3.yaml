@@ -1,5 +1,5 @@
-# enemy_color: "red"
-enemy_color: "blue"
+enemy_color: "red"
+# enemy_color: "blue"
 
 #####-----神经网络参数-----#####
 yolo_name: yolov5
@@ -19,6 +19,18 @@ roi:
   height: 600
 
 use_roi: false
+
+#####-----USB相机参数-----#####
+image_width: 1280
+image_height: 720
+fov_h: 57.7 #87.7
+fov_v: 56.7 
+new_fov_h: 27 #67
+new_fov_v: 40.9
+usb_frame_rate: 60
+usb_exposure: 500 #1-80000______250
+usb_gamma: 160
+usb_gain: 10 #0-96
 
 #####-----传统方法参数-----#####
 threshold: 150
@@ -97,6 +109,16 @@ R_pitch: [1]
 
 #####-----buff_detector参数-----#####
 model: "assets/yolo11_buff_int8.xml"
+
+#####-----buff_fyt_detector参数-----#####
+buff_fyt_detector:
+  model: "assets/yolox_rune_3.6m.xml"
+  device_type: "CPU"
+  confidence_threshold: 0.8
+  top_k: 128
+  nms_threshold: 0.3
+  detect_r_tag: true
+  min_lightness: 130
 
 #####-----buff_aimer参数-----#####
 fire_gap_time: 0.700   # s
