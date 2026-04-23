@@ -9,6 +9,7 @@
 | :--- | :--- | :--- | :--- |
 | `src/standard_mpc.cpp` | `io::Gimbal` 串口 + `io::ROS2` | 自瞄 + 打符 + 裁判系统发布 + 导航下发 | 主线程采图/检测，规划线程 10ms/200ms 下发自瞄控制，ROS 线程 20ms 发布/透传；当前无 `imshow`，运行状态主要看 `logs/`、`records/`、`MvSdkLog/`。 |
 | `src/auto_aim_debug_mpc.cpp` | `io::Gimbal` 串口 | 自瞄调试 | 固定 10ms 规划线程；输出 Plotter JSON；用 `bullet_count` 推断 `fired`。 |
+| `src/sentry_omni_perception_debug_mpc.cpp` | `io::Gimbal` 串口 + 主工业相机 + 双 USB 感知相机 | 全向感知调试 | 主工业相机 YOLO 优先，只有主相机无目标时才回退到左右 USB；左右 USB 当前固定从 `/dev/usb_cam_left`、`/dev/usb_cam_right` 打开，解算姿态只保留 yaw/roll 并强制 `pitch=0`；传 `--display` 时同时显示主相机和左右 USB 三路画面。 |
 | `src/auto_buff_debug_mpc.cpp` | `io::Gimbal` 串口 | 打符调试 | 直接发送 buff MPC 结果。 |
 | `src/standard.cpp` | `io::CBoard` CAN | 单线程自瞄 | `Aimer` 直接出角度并经 CAN 下发；当前未使用 `Shooter` 开火门控。 |
 | `src/mt_standard.cpp` | `io::CBoard` CAN | 多线程自瞄 + 打符 | `CommandGener` 线程做 `Aimer + Shooter + send`，循环约 2ms。 |
@@ -110,14 +111,15 @@
   - `0x03` 读 `RefereePackage2`
 - 当 `0x01` 包校验通过后：
   - 使用主机侧 `std::chrono::steady_clock::now()` 作为接收时间
-  - 把四元数压入 `queue_`
+  - 把四元数压入 `q_history_` 时间历史缓存（当前最多保留 1000 帧）
   - 更新 `state_`
   - 把 `mode` 映射成 `GimbalMode`
 - 当前视觉侧没有使用上行里的 `DWT_stamp` 做时间同步。
 - 连续读异常超过 2 秒会触发重连，最多尝试 10 次。
 
 ### 2.7 `q(t)` 的语义
-- `Gimbal::q(t)` 不是“取最近一帧”，而是从四元数队列中取相邻两帧做 `slerp`。
+- `Gimbal::q(t)` 不是“取最近一帧”，而是从时间历史缓存中取相邻两帧做 `slerp`。
+- 当前实现不再消费内部姿态缓存，因此允许主链路和旁路线程按各自时间戳并发查询姿态；若请求时刻晚于最新姿态，会等待后续上行包补齐。
 - `src/standard_mpc.cpp` 与 `src/auto_aim_debug_mpc.cpp` 当前都按 `t - 6ms` 取姿态。
 - 这意味着图像和姿态对齐问题，优先从这个固定补偿量排查。
 

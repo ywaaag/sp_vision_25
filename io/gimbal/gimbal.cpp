@@ -23,13 +23,17 @@ Gimbal::Gimbal(const std::string & config_path)
 
   thread_ = std::thread(&Gimbal::read_thread, this);
 
-  queue_.pop();
+  {
+    std::unique_lock<std::mutex> lock(q_mutex_);
+    q_condition_.wait(lock, [this] { return !q_history_.empty(); });
+  }
   tools::logger()->info("[Gimbal] First q received.");
 }
 
 Gimbal::~Gimbal()
 {
   quit_ = true;
+  q_condition_.notify_all();
   if (thread_.joinable()) thread_.join();
   serial_.close();
 }
@@ -118,18 +122,38 @@ std::string Gimbal::str(GimbalMode mode) const
 
 Eigen::Quaterniond Gimbal::q(std::chrono::steady_clock::time_point t)
 {
-  while (true) {
-    auto [q_a, t_a] = queue_.pop();
-    auto [q_b, t_b] = queue_.front();
+  auto interpolate = [t](const QuaternionSample & sample_a, const QuaternionSample & sample_b) {
+    const auto & [q_a, t_a] = sample_a;
+    const auto & [q_b, t_b] = sample_b;
     auto t_ab = tools::delta_time(t_a, t_b);
+    if (t_ab == 0.0) return q_b;
+
     auto t_ac = tools::delta_time(t_a, t);
     auto k = t_ac / t_ab;
-    Eigen::Quaterniond q_c = q_a.slerp(k, q_b).normalized();
-    if (t < t_a) return q_c;
-    if (!(t_a < t && t <= t_b)) continue;
+    return q_a.slerp(k, q_b).normalized();
+  };
 
-    return q_c;
+  std::unique_lock<std::mutex> lock(q_mutex_);
+  q_condition_.wait(lock, [this] { return q_history_.size() >= 2 || quit_; });
+
+  while (!quit_ && std::get<1>(q_history_.back()) < t) {
+    q_condition_.wait(lock, [this, &t] {
+      return quit_ || (q_history_.size() >= 2 && std::get<1>(q_history_.back()) >= t);
+    });
   }
+
+  if (q_history_.empty()) return Eigen::Quaterniond::Identity();
+  if (q_history_.size() == 1) return std::get<0>(q_history_.front());
+
+  if (t <= std::get<1>(q_history_.front())) return interpolate(q_history_[0], q_history_[1]);
+
+  for (std::size_t i = 1; i < q_history_.size(); ++i) {
+    if (t <= std::get<1>(q_history_[i])) {
+      return interpolate(q_history_[i - 1], q_history_[i]);
+    }
+  }
+
+  return interpolate(q_history_[q_history_.size() - 2], q_history_[q_history_.size() - 1]);
 }
 
 /**
@@ -347,7 +371,12 @@ void Gimbal::read_thread()
 
         clear_error();
         Eigen::Quaterniond q(rx_data_.q[0], rx_data_.q[1], rx_data_.q[2], rx_data_.q[3]);
-        queue_.push({q, t});
+        {
+          std::lock_guard<std::mutex> lock(q_mutex_);
+          q_history_.push_back({q, t});
+          if (q_history_.size() > MAX_Q_HISTORY_SIZE) q_history_.pop_front();
+        }
+        q_condition_.notify_all();
 
         std::lock_guard<std::mutex> lock(mutex_);
 
@@ -471,7 +500,10 @@ void Gimbal::reconnect()
         std::lock_guard<std::mutex> lock(serial_mutex_);
         serial_.open();  // 尝试重新打开
       }
-      queue_.clear();
+      {
+        std::lock_guard<std::mutex> lock(q_mutex_);
+        q_history_.clear();
+      }
       tools::logger()->info("[Gimbal] Reconnected serial successfully.");
       break;
     } catch (const std::exception & e) {

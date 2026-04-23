@@ -4,13 +4,17 @@
 #include <chrono>
 #include <cmath>
 #include <limits>
+#include <memory>
 #include <numeric>
 #include <opencv2/opencv.hpp>
+#include <stdexcept>
 #include <thread>
 #include <vector>
 
 #include "io/camera.hpp"
 #include "io/gimbal/gimbal.hpp"
+#include "io/usbcamera/usbcamera.hpp"
+#include "tasks/auto_aim/detector.hpp"
 #include "tasks/auto_aim/planner/planner.hpp"
 #include "tasks/auto_aim/solver.hpp"
 #include "tasks/auto_aim/tracker.hpp"
@@ -29,6 +33,59 @@ struct CandidateResult
   double yaw_std_deg = std::numeric_limits<double>::infinity();
   double yaw_mean_deg = 0.0;
 };
+
+enum class CameraSource
+{
+  main,
+  usb_left,
+  usb_right
+};
+
+constexpr char USB_LEFT_DEVICE[] = "usb_cam_left";
+constexpr char USB_RIGHT_DEVICE[] = "usb_cam_right";
+
+CameraSource parse_camera_source(const std::string & value)
+{
+  if (value == "main") return CameraSource::main;
+  if (value == "usb_left") return CameraSource::usb_left;
+  if (value == "usb_right") return CameraSource::usb_right;
+  throw std::invalid_argument("camera-source must be one of: main, usb_left, usb_right");
+}
+
+const char * camera_source_name(CameraSource source)
+{
+  switch (source) {
+    case CameraSource::main:
+      return "main";
+    case CameraSource::usb_left:
+      return "usb_left";
+    case CameraSource::usb_right:
+      return "usb_right";
+    default:
+      return "unknown";
+  }
+}
+
+const char * usb_device_name(CameraSource source)
+{
+  switch (source) {
+    case CameraSource::usb_left:
+      return USB_LEFT_DEVICE;
+    case CameraSource::usb_right:
+      return USB_RIGHT_DEVICE;
+    default:
+      return "";
+  }
+}
+
+bool is_usb_camera(CameraSource source) { return source != CameraSource::main; }
+
+Eigen::Quaterniond usb_world_q(const Eigen::Quaterniond & q)
+{
+  auto usb_ypr = tools::eulers(q, 2, 1, 0);
+  usb_ypr[1] = 0.0;
+  return Eigen::Quaterniond(tools::rotation_matrix(usb_ypr));
+}
 
 double circular_mean(const std::vector<double> & angles)
 {
@@ -61,6 +118,7 @@ double circular_stddev(const std::vector<double> & angles)
 const std::string keys =
   "{help h usage ? |                        | 输出命令行参数说明}"
   "{@config-path   | configs/standard3.yaml | yaml配置文件路径 }"
+  "{camera-source  | main                   | 标定相机源(main / usb_left / usb_right) }"
   "{delay-min-ms   | 0                      | delay搜索起点(ms) }"
   "{delay-max-ms   | 12                     | delay搜索终点(ms) }"
   "{delay-step-ms  | 1                      | delay搜索步长(ms) }"
@@ -81,6 +139,14 @@ int main(int argc, char * argv[])
     return 0;
   }
 
+  CameraSource camera_source;
+  try {
+    camera_source = parse_camera_source(cli.get<std::string>("camera-source"));
+  } catch (const std::exception & e) {
+    tools::logger()->error("[auto_aim_delay_tuner] {}", e.what());
+    return 1;
+  }
+
   const int delay_min_ms = cli.get<int>("delay-min-ms");
   const int delay_max_ms = cli.get<int>("delay-max-ms");
   const int delay_step_ms = std::max(1, cli.get<int>("delay-step-ms"));
@@ -93,16 +159,31 @@ int main(int argc, char * argv[])
 
   tools::Exiter exiter;
   io::Gimbal gimbal(config_path);
-  io::Camera camera(config_path);
 
-  auto_aim::YOLO yolo(config_path, true);
+  std::unique_ptr<io::Camera> camera;
+  std::unique_ptr<io::USBCamera> usb_camera;
+  std::unique_ptr<auto_aim::YOLO> yolo;
+  std::unique_ptr<auto_aim::Detector> detector;
+
+  if (camera_source == CameraSource::main) {
+    camera = std::make_unique<io::Camera>(config_path);
+    yolo = std::make_unique<auto_aim::YOLO>(config_path, true);
+  } else {
+    usb_camera = std::make_unique<io::USBCamera>(usb_device_name(camera_source), config_path);
+    detector = std::make_unique<auto_aim::Detector>(config_path, false);
+  }
+
   auto_aim::Solver solver(config_path);
   auto_aim::Planner planner(config_path);
 
   cv::Mat img;
   std::chrono::steady_clock::time_point t;
 
-  camera.read(img, t);
+  if (camera_source == CameraSource::main) {
+    camera->read(img, t);
+  } else {
+    usb_camera->read(img, t);
+  }
   const auto initial_state = gimbal.state();
   const double center_yaw = initial_state.yaw;
   const double center_pitch = initial_state.pitch;
@@ -110,8 +191,8 @@ int main(int argc, char * argv[])
   const double omega = 2.0 * CV_PI / scan_period_s;
 
   tools::logger()->info(
-    "[auto_aim_delay_tuner] center_yaw={:.2f}deg center_pitch={:.2f}deg amplitude={:.2f}deg",
-    center_yaw * 57.3, center_pitch * 57.3, scan_amplitude_deg);
+    "[auto_aim_delay_tuner] source={} center_yaw={:.2f}deg center_pitch={:.2f}deg amplitude={:.2f}deg",
+    camera_source_name(camera_source), center_yaw * 57.3, center_pitch * 57.3, scan_amplitude_deg);
 
   std::vector<CandidateResult> results;
 
@@ -124,7 +205,11 @@ int main(int argc, char * argv[])
 
     const auto phase_begin = std::chrono::steady_clock::now();
     while (!exiter.exit()) {
-      camera.read(img, t);
+      if (camera_source == CameraSource::main) {
+        camera->read(img, t);
+      } else {
+        usb_camera->read(img, t);
+      }
       const auto now = std::chrono::steady_clock::now();
       const double elapsed = tools::delta_time(now, phase_begin);
       if (elapsed > settle_time_s + scan_duration_s) break;
@@ -141,9 +226,10 @@ int main(int argc, char * argv[])
 
       const auto q = gimbal.q(t - std::chrono::milliseconds(delay_ms));
       const auto gs = gimbal.state();
-      solver.set_R_gimbal2world(q);
+      solver.set_R_gimbal2world(is_usb_camera(camera_source) ? usb_world_q(q) : q);
 
-      auto armors = yolo.detect(img);
+      auto armors =
+        camera_source == CameraSource::main ? yolo->detect(img) : detector->detect(img);
       auto targets = tracker.track(armors, t);
 
       if (!targets.empty()) {
@@ -166,7 +252,8 @@ int main(int argc, char * argv[])
         tools::draw_text(
           img,
           fmt::format(
-            "delay={}ms samples={} yaw={:.2f}", delay_ms, target_yaws.size(), desired_yaw * 57.3),
+            "{} delay={}ms samples={} yaw={:.2f}", camera_source_name(camera_source), delay_ms,
+            target_yaws.size(), desired_yaw * 57.3),
           {20, 40}, {0, 255, 255}, 0.8, 2);
         cv::resize(img, img, {}, 0.5, 0.5);
         cv::imshow("auto_aim_delay_tuner", img);
@@ -187,11 +274,13 @@ int main(int argc, char * argv[])
 
     if (result.samples >= min_samples) {
       tools::logger()->info(
-        "[auto_aim_delay_tuner] delay={}ms samples={} target_yaw_std={:.4f}deg target_yaw_mean={:.4f}deg",
-        result.delay_ms, result.samples, result.yaw_std_deg, result.yaw_mean_deg);
+        "[auto_aim_delay_tuner] source={} delay={}ms samples={} target_yaw_std={:.4f}deg target_yaw_mean={:.4f}deg",
+        camera_source_name(camera_source), result.delay_ms, result.samples, result.yaw_std_deg,
+        result.yaw_mean_deg);
     } else {
       tools::logger()->warn(
-        "[auto_aim_delay_tuner] delay={}ms valid samples too few: {}", result.delay_ms, result.samples);
+        "[auto_aim_delay_tuner] source={} delay={}ms valid samples too few: {}",
+        camera_source_name(camera_source), result.delay_ms, result.samples);
     }
 
     gimbal.send(true, false, center_yaw, 0.0f, 0.0f, center_pitch, 0.0f, 0.0f);
@@ -221,8 +310,8 @@ int main(int argc, char * argv[])
       result.delay_ms, result.samples, result.yaw_std_deg, result.yaw_mean_deg);
   }
   tools::logger()->info(
-    "[auto_aim_delay_tuner] BEST delay = {} ms (target_yaw_std = {:.4f} deg, samples = {})",
-    best_it->delay_ms, best_it->yaw_std_deg, best_it->samples);
+    "[auto_aim_delay_tuner] source={} BEST delay = {} ms (target_yaw_std = {:.4f} deg, samples = {})",
+    camera_source_name(camera_source), best_it->delay_ms, best_it->yaw_std_deg, best_it->samples);
 
   gimbal.send(false, false, 0, 0, 0, 0, 0, 0);
   if (display) cv::destroyAllWindows();

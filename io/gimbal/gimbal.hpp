@@ -4,13 +4,14 @@
 #include <Eigen/Geometry>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
+#include <deque>
 #include <mutex>
 #include <string>
 #include <thread>
 #include <tuple>
 
 #include "serial/serial.h"
-#include "tools/thread_safe_queue.hpp"
 #include "io/packet_typedef.hpp"
 
 namespace io
@@ -171,6 +172,8 @@ private:
   bool reconnecting_ = false;
   std::chrono::steady_clock::time_point last_write_warn_time_{
     std::chrono::steady_clock::time_point::min()};
+  mutable std::mutex q_mutex_;
+  mutable std::condition_variable q_condition_;
 
   GimbalToVision rx_data_;
   RefereePackage1 referee_package1_;
@@ -180,8 +183,9 @@ private:
 
   GimbalMode mode_ = GimbalMode::IDLE;
   GimbalState state_;
-  tools::ThreadSafeQueue<std::tuple<Eigen::Quaterniond, std::chrono::steady_clock::time_point>>
-    queue_{1000};
+  using QuaternionSample = std::tuple<Eigen::Quaterniond, std::chrono::steady_clock::time_point>;
+  static constexpr std::size_t MAX_Q_HISTORY_SIZE = 1000;
+  std::deque<QuaternionSample> q_history_;
 
   bool read(uint8_t * buffer, size_t size);
   bool write_raw(const uint8_t * data, size_t size);

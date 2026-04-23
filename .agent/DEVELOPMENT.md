@@ -89,6 +89,9 @@ make -C build auto_aim_debug_mpc
 make -C build auto_aim_delay_tuner
 ./build/auto_aim_delay_tuner configs/standard3.yaml --delay-min-ms=0 --delay-max-ms=12 --delay-step-ms=1 --scan-amplitude=30 --scan-period=2.0 --scan-duration=6.0 --settle-time=1.0
 
+# USB 感知相机姿态延迟标定（左/右相机可选）
+./build/auto_aim_delay_tuner configs/standard3.yaml --camera-source=usb_left --delay-min-ms=0 --delay-max-ms=12 --delay-step-ms=1 --scan-amplitude=30 --scan-period=2.0 --scan-duration=6.0 --settle-time=1.0
+
 # 海康相机最小化验证
 make -C build camera_test
 ./build/camera_test --config-path=configs/standard3.yaml

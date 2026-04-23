@@ -105,7 +105,6 @@ void USBCamera::open()
   cap_.set(cv::CAP_PROP_AUTO_EXPOSURE, 1);
   cap_.set(cv::CAP_PROP_GAMMA, usb_gamma_);
   cap_.set(cv::CAP_PROP_GAIN, usb_gain_);
-
   if (sharpness_ == 2) {
     device_name = "left";
     cap_.set(cv::CAP_PROP_FRAME_WIDTH, image_width_);
@@ -117,12 +116,8 @@ void USBCamera::open()
     cap_.set(cv::CAP_PROP_FRAME_HEIGHT, image_height_);
     cap_.set(cv::CAP_PROP_EXPOSURE, usb_exposure_);
   }
-
   tools::logger()->info("{} USBCamera opened", device_name);
-  // tools::logger()->info("USBCamera exposure time:{}", cap_.get(cv::CAP_PROP_EXPOSURE));
   tools::logger()->info("USBCamera fps:{}", cap_.get(cv::CAP_PROP_FPS));
-  // tools::logger()->info("USBCamera gamma:{}", cap_.get(cv::CAP_PROP_GAMMA));
-
   // 取图线程
   capture_thread_ = std::thread{[this] {
     ok_ = true;
