@@ -31,6 +31,7 @@ private:
   double min_lightbar_ratio_, max_lightbar_ratio_;
   double min_lightbar_length_;
   double min_armor_ratio_, max_armor_ratio_;
+  double small_armor_max_ratio_, big_armor_min_ratio_;
   double max_side_ratio_;
   double min_confidence_;
   double max_rectangular_error_;

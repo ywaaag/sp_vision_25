@@ -53,6 +53,8 @@
 暂无
 
 ## 6. 最近同步
+- **2026-04-24**: 新增 `omni_perception_delay_tuner`，仿照 `auto_aim_delay_tuner` 的自动扫角评分流程，为左右 USB 感知相机提供独立的姿态延迟标定入口；当前通过 `--camera-side=left|right` 选择相机，并复用 `sentry_omni_perception_debug_mpc` 的 `usb_world_q + Detector + 最近装甲板 + Tracker` 链路。
+- **2026-04-24**: 传统 `auto_aim::Detector` 的大小装甲板分型阈值已从 `tasks/auto_aim/detector.cpp` 的硬编码比值接入 YAML。`configs/standard3.yaml` 新增 `small_armor_max_ratio` / `big_armor_min_ratio`，其中当前 `big_armor_min_ratio` 调到 `3.2`，用于减轻 USB 感知相机把小装甲板直接判成 `big` 的情况。
 - **2026-04-23**: `auto_aim_delay_tuner` 已扩展为支持 `--camera-source=main|usb_left|usb_right`。主相机继续走 YOLO 检测链；左右 USB 版本走当前仓库的传统 `Detector + Tracker`，并复用 `sentry_omni_perception_debug_mpc` 的 USB 姿态几何假设：yaw/roll 跟随云台、`pitch=0`。
 - **2026-04-23**: `sentry_omni_perception_debug_mpc` 的左右感知相机已改为通过 `/dev/usb_cam_left`、`/dev/usb_cam_right` 符号名打开；USB 感知分支的姿态解算改为保留 yaw/roll 并固定 `pitch=0`，避免直接跟随主云台俯仰；新增 `--display` 开关后可同时显示主相机、左 USB、右 USB 三路画面。
 - **2026-04-22**: `sentry_omni_perception_debug_mpc` 的 USB 回退下发新增固定左右 yaw 偏置。当前实现会在原有 `gs.yaw_diff` 基础上，针对 `usb_left` 额外叠加 `+120°`、针对 `usb_right` 额外叠加 `-120°`，并继续对 `plan.target_yaw` 与 `plan.yaw` 同步生效。

@@ -22,6 +22,8 @@ Detector::Detector(const std::string & config_path, bool debug)
   min_lightbar_length_ = yaml["min_lightbar_length"].as<double>();
   min_armor_ratio_ = yaml["min_armor_ratio"].as<double>();
   max_armor_ratio_ = yaml["max_armor_ratio"].as<double>();
+  small_armor_max_ratio_ = yaml["small_armor_max_ratio"] ? yaml["small_armor_max_ratio"].as<double>() : 2.5;
+  big_armor_min_ratio_ = yaml["big_armor_min_ratio"] ? yaml["big_armor_min_ratio"].as<double>() : 3.0;
   max_side_ratio_ = yaml["max_side_ratio"].as<double>();
   min_confidence_ = yaml["min_confidence"].as<double>();
   max_rectangular_error_ = yaml["max_rectangular_error"].as<double>() / 57.3;  // degree to rad
@@ -313,13 +315,13 @@ ArmorType Detector::get_type(const Armor & armor)
   /// 优先根据当前armor.ratio判断
   /// TODO: 25赛季是否还需要根据比例判断大小装甲？能否根据图案直接判断？
 
-  if (armor.ratio > 3.0) {
+  if (armor.ratio > big_armor_min_ratio_) {
     // tools::logger()->debug(
     //   "[Detector] get armor type by ratio: BIG {} {:.2f}", ARMOR_NAMES[armor.name], armor.ratio);
     return ArmorType::big;
   }
 
-  if (armor.ratio < 2.5) {
+  if (armor.ratio < small_armor_max_ratio_) {
     // tools::logger()->debug(
     //   "[Detector] get armor type by ratio: SMALL {} {:.2f}", ARMOR_NAMES[armor.name], armor.ratio);
     return ArmorType::small;

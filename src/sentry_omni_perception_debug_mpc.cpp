@@ -30,8 +30,9 @@ using namespace std::chrono_literals;
 namespace
 {
 constexpr auto GIMBAL_DELAY = std::chrono::milliseconds(28);
-constexpr double USB_LEFT_YAW_OFFSET = 120.0 * CV_PI / 180.0;
-constexpr double USB_RIGHT_YAW_OFFSET = -120.0 * CV_PI / 180.0;
+constexpr auto USB_STARTUP_SETTLE = std::chrono::milliseconds(300);
+constexpr double USB_LEFT_YAW_OFFSET = 2.7;
+constexpr double USB_RIGHT_YAW_OFFSET = -2.7;
 constexpr char USB_LEFT_DEVICE[] = "usb_cam_left";
 constexpr char USB_RIGHT_DEVICE[] = "usb_cam_right";
 
@@ -171,9 +172,11 @@ int main(int argc, char * argv[])
     tools::read<std::string>(yaml, "enemy_color") == "red" ? auto_aim::Color::red : auto_aim::Color::blue;
 
   io::Gimbal gimbal(config_path);
-  io::Camera camera(config_path);
   io::USBCamera usb_left_camera(USB_LEFT_DEVICE, config_path);
   io::USBCamera usb_right_camera(USB_RIGHT_DEVICE, config_path);
+  // Match `usbcamera_test` startup more closely: let the USB cameras settle before starting HikRobot.
+  std::this_thread::sleep_for(USB_STARTUP_SETTLE);
+  io::Camera camera(config_path);
 
   auto_aim::YOLO yolo(config_path, true);
   auto_aim::Detector usb_left_detector(config_path, false);

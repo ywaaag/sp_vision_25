@@ -1,5 +1,5 @@
-# enemy_color: "red"
-enemy_color: "blue"
+enemy_color: "red"
+# enemy_color: "blue"
 
 #####-----神经网络参数-----#####
 yolo_name: yolov5
@@ -28,9 +28,9 @@ fov_v: 56.7
 new_fov_h: 27 #67
 new_fov_v: 40.9
 usb_frame_rate: 60
-usb_exposure: 50 #1-80000______250
-usb_gamma: 160
-usb_gain: 10 #0-96
+usb_exposure: 60 #1-80000______250
+usb_gamma: 0
+usb_gain: 90 #0-96
 
 #####-----传统方法参数-----#####
 threshold: 150
@@ -40,6 +40,8 @@ max_lightbar_ratio: 20
 min_lightbar_length: 8
 min_armor_ratio: 1
 max_armor_ratio: 5
+small_armor_max_ratio: 2.5
+big_armor_min_ratio: 3.2
 max_side_ratio: 1.5
 max_rectangular_error: 25 # degree
 
