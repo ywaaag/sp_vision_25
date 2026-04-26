@@ -99,6 +99,19 @@ R_pitch: [1]
 #####-----buff_detector参数-----#####
 model: "assets/yolo11_buff_int8.xml"
 
+#####-----buff_fyt_detector参数-----#####
+buff_fyt_detector:
+  model: "assets/yolox_rune_3.6m.xml"
+  device_type: "CPU"
+  confidence_threshold: 0.7
+  top_k: 128
+  nms_threshold: 0.3
+  detect_r_tag: true
+  min_lightness: 90
+  r_tag_roi_half_size: 120
+  r_tag_max_distance: 80
+  r_tag_min_area: 12
+
 #####-----buff_aimer参数-----#####
 fire_gap_time: 0.700   # s
 predict_time: 0.120     # s
