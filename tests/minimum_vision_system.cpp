@@ -1,4 +1,5 @@
 #include <chrono>
+#include <list>
 #include <opencv2/opencv.hpp>
 #include <thread>
 
@@ -54,7 +55,12 @@ int main(int argc, char * argv[])
   nlohmann::json data;
 
   while (!exiter.exit()) {
-    auto [img, armors, t] = detector.debug_pop();
+    cv::Mat img;
+    std::list<auto_aim::Armor> armors;
+    std::chrono::steady_clock::time_point t;
+    if (!detector.debug_pop(img, armors, t)) {
+      break;
+    }
 
     Eigen::Quaterniond q = dm_imu.imu_at(t);
 

@@ -22,8 +22,12 @@ Gimbal::Gimbal(const std::string & config_path)
 
   thread_ = std::thread(&Gimbal::read_thread, this);
 
-  queue_.pop();
-  tools::logger()->info("[Gimbal] First q received.");
+  std::tuple<Eigen::Quaterniond, std::chrono::steady_clock::time_point> first;
+  if (queue_.pop(first)) {
+    tools::logger()->info("[Gimbal] First q received.");
+  } else {
+    tools::logger()->warn("[Gimbal] Queue closed before first q received.");
+  }
 }
 
 Gimbal::~Gimbal()
@@ -64,8 +68,18 @@ std::string Gimbal::str(GimbalMode mode) const
 Eigen::Quaterniond Gimbal::q(std::chrono::steady_clock::time_point t)
 {
   while (true) {
-    auto [q_a, t_a] = queue_.pop();
-    auto [q_b, t_b] = queue_.front();
+    std::tuple<Eigen::Quaterniond, std::chrono::steady_clock::time_point> sample_a;
+    if (!queue_.pop(sample_a)) {
+      return Eigen::Quaterniond::Identity();
+    }
+
+    std::tuple<Eigen::Quaterniond, std::chrono::steady_clock::time_point> sample_b;
+    if (!queue_.front(sample_b)) {
+      return std::get<0>(sample_a);
+    }
+
+    const auto & [q_a, t_a] = sample_a;
+    const auto & [q_b, t_b] = sample_b;
     auto t_ab = tools::delta_time(t_a, t_b);
     auto t_ac = tools::delta_time(t_a, t);
     auto k = t_ac / t_ab;

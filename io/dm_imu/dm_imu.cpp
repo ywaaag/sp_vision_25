@@ -18,8 +18,14 @@ DM_IMU::DM_IMU() : queue_(5000)
 {
   init_serial();
   rec_thread_ = std::thread(&DM_IMU::get_imu_data_thread, this);
-  queue_.pop(data_ahead_);
-  queue_.pop(data_behind_);
+  if (!queue_.pop(data_ahead_)) {
+    data_ahead_ = {Eigen::Quaterniond::Identity(), std::chrono::steady_clock::time_point{}};
+    tools::logger()->warn("[DM_IMU] Queue closed before first IMU sample.");
+  }
+  if (!queue_.pop(data_behind_)) {
+    data_behind_ = data_ahead_;
+    tools::logger()->warn("[DM_IMU] Queue closed before second IMU sample.");
+  }
   tools::logger()->info("[DM_IMU] initialized");
 }
 
@@ -108,7 +114,9 @@ Eigen::Quaterniond DM_IMU::imu_at(std::chrono::steady_clock::time_point timestam
   if (data_behind_.timestamp < timestamp) data_ahead_ = data_behind_;
 
   while (true) {
-    queue_.pop(data_behind_);
+    if (!queue_.pop(data_behind_)) {
+      return data_ahead_.q;
+    }
     if (data_behind_.timestamp > timestamp) break;
     data_ahead_ = data_behind_;
   }
