@@ -5,8 +5,10 @@
 
 #include "tools/dashboard_mqtt_contract.hpp"
 
-namespace tools {
-namespace {
+namespace tools
+{
+namespace
+{
 constexpr auto PUBLISH_IDLE_WAIT = std::chrono::milliseconds(50);
 
 std::int64_t json_timestamp_or_zero(const nlohmann::json &payload) {

@@ -2,8 +2,6 @@
 
 #include <atomic>
 #include <chrono>
-#include <exception>
-#include <memory>
 #include <nlohmann/json.hpp>
 #include <opencv2/opencv.hpp>
 #include <optional>
@@ -13,6 +11,7 @@
 
 #include "io/camera.hpp"
 #include "io/gimbal/gimbal.hpp"
+#include "src/auto_aim_debug_dashboard.hpp"
 #include "tasks/auto_aim/planner/planner.hpp"
 #include "tasks/auto_aim/solver.hpp"
 #include "tasks/auto_aim/tracker.hpp"
@@ -26,11 +25,6 @@
 #include "tools/plotter.hpp"
 #include "tools/thread_safe_queue.hpp"
 
-#ifdef SP_VISION_ENABLE_DASHBOARD_MQTT
-#include "tools/dashboard_params.hpp"
-#include "tools/mqtt_bridge.hpp"
-#endif
-
 using namespace std::chrono_literals;
 
 const std::string keys =
@@ -39,54 +33,6 @@ const std::string keys =
   "{robot-id       | myrobot                | MQTT Dashboard robot id}"
   "{mqtt-host      | tcp://127.0.0.1:1883   | MQTT broker URI}"
   "{@config-path   | configs/standard3.yaml | 位置参数，yaml配置文件路径 }";
-
-#ifdef SP_VISION_ENABLE_DASHBOARD_MQTT
-void publish_dashboard_params(
-  tools::MqttBridge & bridge, const tools::dashboard::DashboardParams & dashboard_params)
-{
-  const auto timestamp = tools::dashboard_unix_timestamp_ms();
-  bridge.publish_params_schema_payload(dashboard_params.make_schema());
-  bridge.publish_params_current_payload(dashboard_params.make_current(timestamp));
-}
-
-void handle_dashboard_commands(
-  tools::MqttBridge & bridge, const tools::dashboard::DashboardParams & dashboard_params,
-  std::atomic<bool> & telemetry_enabled)
-{
-  tools::MqttCommand command;
-  while (bridge.try_pop_command(command)) {
-    if (command.type == tools::MqttCommandType::Param) {
-      const auto result = dashboard_params.apply(command.key, command.value);
-      if (result.ok) {
-        bridge.publish_params_current_payload(
-          dashboard_params.make_current(tools::dashboard_unix_timestamp_ms()));
-      }
-      bridge.publish_ack(command.request_id, result.ok, result.message, result.applied);
-      continue;
-    }
-
-    if (command.command == "stop_dashboard") {
-      telemetry_enabled.store(false);
-      bridge.publish_ack(
-        command.request_id, true, "dashboard telemetry stopped",
-        nlohmann::json{{"command", command.command}});
-    } else if (command.command == "start_dashboard") {
-      telemetry_enabled.store(true);
-      bridge.publish_ack(
-        command.request_id, true, "dashboard telemetry started",
-        nlohmann::json{{"command", command.command}});
-    } else if (command.command == "republish_params") {
-      publish_dashboard_params(bridge, dashboard_params);
-      bridge.publish_ack(
-        command.request_id, true, "dashboard parameters republished",
-        nlohmann::json{{"command", command.command}});
-    } else {
-      bridge.publish_ack(
-        command.request_id, false, "unknown dashboard command", nlohmann::json::object());
-    }
-  }
-}
-#endif
 
 int main(int argc, char * argv[])
 {
@@ -113,40 +59,7 @@ int main(int argc, char * argv[])
   auto_aim::Solver solver(config_path);
   auto_aim::Tracker tracker(config_path, solver);
   auto_aim::Planner planner(config_path);
-
-#ifdef SP_VISION_ENABLE_DASHBOARD_MQTT
-  const auto dashboard_enabled = dashboard_config.enabled;
-  std::unique_ptr<tools::MqttBridge> dashboard_bridge;
-  std::unique_ptr<tools::dashboard::DashboardParams> dashboard_params;
-  std::atomic<bool> dashboard_telemetry_enabled{dashboard_enabled};
-  if (dashboard_enabled) {
-    try {
-      tools::MqttBridgeOptions options;
-      options.server_uri = dashboard_config.mqtt_host;
-      options.robot_id = dashboard_config.robot_id;
-      options.client_id = options.robot_id + "_auto_aim_debug_mpc";
-
-      auto next_params = std::make_unique<tools::dashboard::DashboardParams>(planner);
-      auto next_bridge = std::make_unique<tools::MqttBridge>(options);
-      next_bridge->start();
-      publish_dashboard_params(*next_bridge, *next_params);
-      dashboard_params = std::move(next_params);
-      dashboard_bridge = std::move(next_bridge);
-      tools::logger()->info(
-        "MQTT Dashboard enabled for {} at {}", options.robot_id, options.server_uri);
-    } catch (const std::exception & e) {
-      dashboard_telemetry_enabled.store(false);
-      tools::logger()->warn("MQTT Dashboard disabled: {}", e.what());
-    } catch (...) {
-      dashboard_telemetry_enabled.store(false);
-      tools::logger()->warn("MQTT Dashboard disabled: unknown initialization error");
-    }
-  }
-#else
-  if (dashboard_config.enabled) {
-    tools::logger()->warn("MQTT Dashboard requested but mqtt_bridge was not built");
-  }
-#endif
+  AutoAimDebugDashboard dashboard(dashboard_config, planner);
 
   tools::ThreadSafeQueue<std::optional<auto_aim::Target>, true> target_queue(1);
   target_queue.push(std::nullopt);
@@ -208,11 +121,7 @@ int main(int argc, char * argv[])
       }
 
       plotter.plot(data);
-#ifdef SP_VISION_ENABLE_DASHBOARD_MQTT
-      if (dashboard_bridge && dashboard_telemetry_enabled.load()) {
-        dashboard_bridge->push_data(data);
-      }
-#endif
+      dashboard.push_data(data);
 
       std::this_thread::sleep_for(10ms);
     }
@@ -222,11 +131,7 @@ int main(int argc, char * argv[])
   std::chrono::steady_clock::time_point t;
 
   while (!exiter.exit()) {
-#ifdef SP_VISION_ENABLE_DASHBOARD_MQTT
-    if (dashboard_bridge && dashboard_params) {
-      handle_dashboard_commands(*dashboard_bridge, *dashboard_params, dashboard_telemetry_enabled);
-    }
-#endif
+    dashboard.handle_commands();
 
     Eigen::Quaterniond q;
     camera.read(img, t);
@@ -254,11 +159,7 @@ int main(int argc, char * argv[])
       data["armor_center_y"] = armor.center_norm.y;
     }
     plotter.plot(data);
-#ifdef SP_VISION_ENABLE_DASHBOARD_MQTT
-    if (dashboard_bridge && dashboard_telemetry_enabled.load()) {
-      dashboard_bridge->push_data(data);
-    }
-#endif
+    dashboard.push_data(data);
 
     if (!targets.empty()) {
       auto target = targets.front();
@@ -285,11 +186,7 @@ int main(int argc, char * argv[])
 
   quit = true;
   if (plan_thread.joinable()) plan_thread.join();
-#ifdef SP_VISION_ENABLE_DASHBOARD_MQTT
-  if (dashboard_bridge) {
-    dashboard_bridge->stop();
-  }
-#endif
+  dashboard.stop();
   gimbal.send(false, false, 0, 0, 0, 0, 0, 0);
 
   return 0;

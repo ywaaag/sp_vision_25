@@ -13,9 +13,11 @@
 
 #include "tools/thread_safe_queue.hpp"
 
-namespace tools {
+namespace tools
+{
 
-struct MqttBridgeOptions {
+struct MqttBridgeOptions
+{
   std::string server_uri{"tcp://localhost:1883"};
   std::string client_id{"sp_vision_25"};
   std::string robot_id{"myrobot"};
@@ -26,12 +28,14 @@ struct MqttBridgeOptions {
   std::size_t inbound_queue_size{32};
 };
 
-enum class MqttCommandType {
+enum class MqttCommandType
+{
   Param,
   Cmd,
 };
 
-struct MqttCommand {
+struct MqttCommand
+{
   MqttCommandType type{MqttCommandType::Cmd};
   std::string request_id;
   std::string key;
@@ -42,8 +46,9 @@ struct MqttCommand {
   nlohmann::json raw;
 };
 
-class MqttBridge : public virtual mqtt::callback {
- public:
+class MqttBridge : public virtual mqtt::callback
+{
+public:
   explicit MqttBridge(const MqttBridgeOptions &options);
   ~MqttBridge() override;
 
@@ -75,8 +80,9 @@ class MqttBridge : public virtual mqtt::callback {
   bool running() const;
   const MqttBridgeOptions &options() const;
 
- private:
-  struct PublishMessage {
+private:
+  struct PublishMessage
+  {
     std::string topic;
     std::string payload;
     int qos{0};

@@ -51,7 +51,10 @@ target_link_libraries(dashboard_config
 add_executable(standard src/standard.cpp)
 add_executable(mt_standard src/mt_standard.cpp)
 add_executable(standard_mpc src/standard_mpc.cpp)
-add_executable(auto_aim_debug_mpc src/auto_aim_debug_mpc.cpp)
+add_executable(auto_aim_debug_mpc
+    src/auto_aim_debug_mpc.cpp
+    src/auto_aim_debug_dashboard.cpp
+)
 add_executable(mt_auto_aim_debug src/mt_auto_aim_debug.cpp)
 add_executable(auto_buff_debug src/auto_buff_debug.cpp)
 add_executable(auto_buff_debug_mpc src/auto_buff_debug_mpc.cpp)

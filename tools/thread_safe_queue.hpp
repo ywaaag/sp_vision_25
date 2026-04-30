@@ -11,10 +11,12 @@
 
 #include "tools/logger.hpp"
 
-namespace tools {
+namespace tools
+{
 template <typename T, bool PopWhenFull = false>
-class ThreadSafeQueue {
- public:
+class ThreadSafeQueue
+{
+public:
   ThreadSafeQueue(
       size_t max_size, std::function<void(void)> full_handler = [] {})
       : max_size_(max_size), full_handler_(full_handler) {}
@@ -55,6 +57,16 @@ class ThreadSafeQueue {
     value = std::move(queue_.front());
     queue_.pop();
     return true;
+  }
+
+  T pop() {
+    std::unique_lock<std::mutex> lock(mutex_);
+
+    not_empty_condition_.wait(lock, [this] { return !queue_.empty(); });
+
+    T value = std::move(queue_.front());
+    queue_.pop();
+    return value;
   }
 
   bool try_pop(T& value) {
@@ -117,6 +129,14 @@ class ThreadSafeQueue {
     return true;
   }
 
+  T front() {
+    std::unique_lock<std::mutex> lock(mutex_);
+
+    not_empty_condition_.wait(lock, [this] { return !queue_.empty(); });
+
+    return queue_.front();
+  }
+
   void back(T& value) {
     std::unique_lock<std::mutex> lock(mutex_);
 
@@ -138,8 +158,6 @@ class ThreadSafeQueue {
     while (!queue_.empty()) {
       queue_.pop();
     }
-    not_empty_condition_
-        .notify_all();  // 如果其他线程正在等待队列不为空，这样可以唤醒它们
   }
 
   void close() {
@@ -158,7 +176,7 @@ class ThreadSafeQueue {
     return closed_;
   }
 
- private:
+private:
   std::queue<T> queue_;
   size_t max_size_;
   mutable std::mutex mutex_;
