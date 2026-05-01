@@ -1,0 +1,16 @@
+services:
+  sp-vision-dev:
+    build:
+      context: .
+      dockerfile: docker/dev/Dockerfile
+    image: sp_vision_25-dev:latest
+    network_mode: host
+    working_dir: /app
+    volumes:
+      - .:/app
+    environment:
+      OpenVINO_DIR: /opt/intel/openvino_2024.6.0/runtime/cmake
+      LD_LIBRARY_PATH: /opt/intel/openvino_2024.6.0/runtime/lib/intel64
+    stdin_open: true
+    tty: true
+    command: /bin/bash

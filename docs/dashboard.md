@@ -17,8 +17,8 @@
 - Dashboard browser UI。
 - CSS、JS、前端 vendor assets。
 - Mosquitto、MQTT over WebSocket 或 HTTP static server。
-- mock runtime、video-source、hardwareless smoke、mock publisher。
-- image/video/MJPEG/Web terminal。
+- 生产入口 mock runtime、mock publisher。
+- Dashboard 网络传输中的 image/video/MJPEG/Web terminal。
 
 Dashboard 当前只接入 `src/auto_aim_debug_mpc.cpp`。`src/standard_mpc.cpp` 保持 upstream/main 行为，不链接 `mqtt_bridge`、`dashboard_params`、`dashboard_config`，也不定义 `SP_VISION_ENABLE_DASHBOARD_MQTT`。
 
@@ -197,6 +197,14 @@ cmake --build build --target auto_aim_debug_mpc dashboard_params_test -j$(nproc)
 cmake --build build --target standard_mpc -j$(nproc)
 ```
 
+宿主机缺少 OpenVINO、Paho 或其他 C++ 依赖时，可以使用本仓库的开发容器构建视觉侧目标：
+
+```bash
+docker compose -f docker-compose.dev.yml build
+docker compose -f docker-compose.dev.yml run --rm sp-vision-dev \
+  bash -lc 'cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build --target auto_aim_debug_mpc dashboard_params_test -j"$(nproc)"'
+```
+
 如果 Paho 可用，还可以构建：
 
 ```bash
@@ -204,6 +212,63 @@ cmake --build build --target mqtt_bridge_smoke -j$(nproc)
 ```
 
 前端、broker、WebSocket 和 HTTP 验收在独立 Dashboard panel 仓库执行。
+
+## Hardwareless Telemetry Smoke
+
+如果目标是在没有下位机、相机和 gimbal 的情况下观察自瞄算法链路是否能跑通，并验证 Dashboard telemetry，可以使用独立测试目标：
+
+```bash
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --target auto_aim_dashboard_hardwareless_test -j$(nproc)
+```
+
+也可以在开发容器中构建：
+
+```bash
+./scripts/hardwareless_dashboard_build.sh
+```
+
+先在独立 Dashboard panel 仓库启动 broker、WebSocket 与 HTTP 服务：
+
+```bash
+cd /home/ywag/sp_vision_dashboard_panel
+./scripts/dashboard_up.sh
+```
+
+再回到本仓库运行视频输入测试：
+
+```bash
+./build/auto_aim_dashboard_hardwareless_test \
+  --dashboard \
+  --mqtt-host tcp://127.0.0.1:1883 \
+  --video-source assets/demo/demo.avi \
+  --video-loop \
+  --max-frames 300 \
+  configs/standard3.yaml
+```
+
+容器运行等价命令：
+
+```bash
+./scripts/hardwareless_dashboard_run.sh
+```
+
+浏览器访问：
+
+```text
+http://robot-lan-ip:8080
+```
+
+页面填写：
+
+```text
+Broker URL: ws://robot-lan-ip:9001
+Robot ID: myrobot
+```
+
+该目标只读取视频文件和同名姿态文本，例如 `assets/demo/demo.avi` 与 `assets/demo/demo.txt`。如果姿态文本不存在，会使用 identity gimbal pose。它不构造 `io::Camera` 或 `io::Gimbal`，也不修改 `standard_mpc` 或真实 `auto_aim_debug_mpc` 的启动逻辑。
+
+注意：该目标是无硬件算法与 Dashboard telemetry smoke，不等价于真实链路验收。若要实际发布 MQTT telemetry，构建环境仍需要 Paho MQTT C/C++，否则 Dashboard helper 会按降级逻辑记录 warning 并关闭 telemetry 发布。
 
 合并前建议检查：
 
@@ -214,7 +279,7 @@ rg -n "gridstack|echarts|mqtt.min.js|dashboard/css|dashboard/js|dashboard/vendor
 rg -n "mock-runtime|video-source|video-loop|VideoFrameSource|hardwareless|mock_publisher|MJPEG|mjpeg|/image" .
 ```
 
-前端残留扫描不应命中实际前端源码或 vendor。mock/image/video 扫描只允许命中文档中“不包含/禁止重新引入”的说明。
+前端残留扫描不应命中实际前端源码或 vendor。mock/image/video 扫描中，`video-source` 与 `hardwareless` 只应命中独立 `auto_aim_dashboard_hardwareless_test`、配套脚本和文档；不允许命中生产入口 mock runtime、mock publisher 或图像/视频传输功能。
 
 ## MQTT Protocol
 
