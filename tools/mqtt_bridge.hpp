@@ -90,6 +90,9 @@ private:
 
   void message_arrived(mqtt::const_message_ptr message) override;
   void publish_loop();
+  void close_queues();
+  void join_publish_thread();
+  void disconnect_client();
   bool enqueue_publish(const std::string &topic, const nlohmann::json &payload,
                        int qos);
   bool enqueue_telemetry(const nlohmann::json &payload);

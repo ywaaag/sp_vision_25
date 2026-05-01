@@ -69,9 +69,9 @@ bool MqttBridge::start() {
     publish_thread_ = std::thread(&MqttBridge::publish_loop, this);
   } catch (...) {
     running_.store(false);
-    telemetry_queue_.close();
-    publish_queue_.close();
-    inbound_queue_.close();
+    close_queues();
+    join_publish_thread();
+    disconnect_client();
     throw;
   }
 
@@ -81,33 +81,15 @@ bool MqttBridge::start() {
 void MqttBridge::stop() {
   bool expected = true;
   if (!running_.compare_exchange_strong(expected, false)) {
-    telemetry_queue_.close();
-    publish_queue_.close();
-    inbound_queue_.close();
-    if (publish_thread_.joinable()) {
-      publish_thread_.join();
-    }
+    close_queues();
+    join_publish_thread();
+    disconnect_client();
     return;
   }
 
-  try {
-    if (client_.is_connected()) {
-      client_.unsubscribe(dashboard::control_param_topic(options_.robot_id))
-          ->wait();
-      client_.unsubscribe(dashboard::control_cmd_topic(options_.robot_id))
-          ->wait();
-      client_.disconnect()->wait();
-    }
-  } catch (const mqtt::exception &) {
-  }
-
-  telemetry_queue_.close();
-  publish_queue_.close();
-  inbound_queue_.close();
-
-  if (publish_thread_.joinable()) {
-    publish_thread_.join();
-  }
+  close_queues();
+  join_publish_thread();
+  disconnect_client();
 }
 
 bool MqttBridge::push_data(const nlohmann::json &values) {
@@ -243,6 +225,37 @@ void MqttBridge::publish_loop() {
         telemetry_queue_.closed()) {
       break;
     }
+  }
+}
+
+void MqttBridge::close_queues() {
+  telemetry_queue_.close();
+  publish_queue_.close();
+  inbound_queue_.close();
+}
+
+void MqttBridge::join_publish_thread() {
+  if (publish_thread_.joinable()) {
+    publish_thread_.join();
+  }
+}
+
+void MqttBridge::disconnect_client() {
+  if (!client_.is_connected()) {
+    return;
+  }
+
+  try {
+    client_.unsubscribe(dashboard::control_param_topic(options_.robot_id))->wait();
+  } catch (const mqtt::exception &) {
+  }
+  try {
+    client_.unsubscribe(dashboard::control_cmd_topic(options_.robot_id))->wait();
+  } catch (const mqtt::exception &) {
+  }
+  try {
+    client_.disconnect()->wait();
+  } catch (const mqtt::exception &) {
   }
 }
 

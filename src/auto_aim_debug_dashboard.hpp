@@ -2,6 +2,7 @@
 #define SRC__AUTO_AIM_DEBUG_DASHBOARD_HPP
 
 #include <memory>
+#include <string>
 
 #include <nlohmann/json.hpp>
 
@@ -22,7 +23,8 @@ class AutoAimDebugDashboard
 {
 public:
   AutoAimDebugDashboard(
-    const tools::dashboard::DashboardConfig & config, auto_aim::Planner & planner);
+    const tools::dashboard::DashboardConfig & config, const std::string & config_path,
+    auto_aim::Planner & planner);
   ~AutoAimDebugDashboard();
 
   AutoAimDebugDashboard(const AutoAimDebugDashboard &) = delete;

@@ -23,6 +23,7 @@
 - 2026-04-30 MQTT Dashboard PR 范围已收缩为 `auto_aim_debug_mpc` only：`standard_mpc` 回到 upstream/main 行为，打符热参链路移除，视觉仓库只保留 MQTT 后端能力。
 - 2026-04-30 MQTT Dashboard 前后端分仓收口：`sp_vision_25` 只保留 MQTT 后端能力，浏览器 UI 与 Dashboard 服务容器迁往独立前端仓库。
 - 2026-04-30 MQTT Dashboard PR #4 review 修复：`ThreadSafeQueue` 恢复旧阻塞式 `front()`/`pop()` overload，`auto_aim_debug_mpc` 的 Dashboard 接入封装到 `src/auto_aim_debug_dashboard.*`。
+- 2026-05-01 MQTT Dashboard PR review 修复：`MqttBridge::start()` 失败路径补齐断连清理，Dashboard 参数 schema/current 改用实际启动配置路径。
 - 当前没有明确进行中的功能任务；本文件现阶段主要承担“维护面板”和“回填入口”的作用。
 - 历史任务细节已归档到下文，不再在顶部重复展开。
 
@@ -72,6 +73,7 @@
 - **2026-04-30**: 收缩 Dashboard PR 范围：只保留 `auto_aim_debug_mpc` 接入，`standard_mpc` 与 `buff_aimer.*` 回退到 upstream/main，文档补充同机/分离 LAN 拓扑。
 - **2026-04-30**: 完成 Dashboard 前后端分仓收口：移除本仓库前端静态资源和 Dashboard 服务容器绑定，新增前端迁移说明。
 - **2026-04-30**: 修复 Dashboard PR #4 review：队列兼容旧阻塞 API，修正 MQTT bridge namespace 风格，并封装自瞄调试入口 Dashboard 接入。
+- **2026-05-01**: 修复 Dashboard PR review：MQTT start 失败会 best-effort 关闭连接，DashboardParams 不再依赖硬编码 `configs/standard3.yaml`，前端分仓文档去除本机绝对路径。
 - **2026-04-26**: 完成 Dashboard 热参数模型 H：新增 `DashboardParams`、Planner/Buff Aimer 热参数快照与单参数 apply，验证范围不包含 TinyMPC Q/R/max_acc 热修改；2026-04-30 后 Buff Aimer 热参链路已按新范围移除。
 - **2026-04-15**: 将隐藏知识目录更名为 `.agent/`，并同步更新仓库内所有元规则与文档引用路径。
 - **2026-04-15**: 将仓库根 `AGENTS.md` 重写为精简的元规则入口文件，仅保留上下文加载顺序、知识路由与收尾同步要求。

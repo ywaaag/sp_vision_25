@@ -16,7 +16,9 @@
 class AutoAimDebugDashboard::Impl
 {
 public:
-  Impl(const tools::dashboard::DashboardConfig & config, auto_aim::Planner & planner)
+  Impl(
+    const tools::dashboard::DashboardConfig & config, const std::string & config_path,
+    auto_aim::Planner & planner)
 #ifdef SP_VISION_ENABLE_DASHBOARD_MQTT
   : telemetry_enabled_(config.enabled)
 #endif
@@ -32,7 +34,8 @@ public:
       options.robot_id = config.robot_id;
       options.client_id = options.robot_id + "_auto_aim_debug_mpc";
 
-      auto next_params = std::make_unique<tools::dashboard::DashboardParams>(planner);
+      auto next_params =
+        std::make_unique<tools::dashboard::DashboardParams>(config_path, planner, false);
       auto next_bridge = std::make_unique<tools::MqttBridge>(options);
       next_bridge->start();
       publish_params(*next_bridge, *next_params);
@@ -48,6 +51,7 @@ public:
       tools::logger()->warn("MQTT Dashboard disabled: unknown initialization error");
     }
 #else
+    (void)config_path;
     (void)planner;
     if (config.enabled) {
       tools::logger()->warn("MQTT Dashboard requested but mqtt_bridge was not built");
@@ -154,8 +158,9 @@ private:
 };
 
 AutoAimDebugDashboard::AutoAimDebugDashboard(
-  const tools::dashboard::DashboardConfig & config, auto_aim::Planner & planner)
-: impl_(std::make_unique<Impl>(config, planner))
+  const tools::dashboard::DashboardConfig & config, const std::string & config_path,
+  auto_aim::Planner & planner)
+: impl_(std::make_unique<Impl>(config, config_path, planner))
 {
 }
 

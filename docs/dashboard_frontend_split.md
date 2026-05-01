@@ -4,10 +4,10 @@
 
 ## Frontend Repository
 
-正式前端仓库路径：
+正式前端仓库：
 
 ```text
-/home/ywag/sp_vision_dashboard_panel
+sp_vision_dashboard_panel
 ```
 
 该仓库职责：
@@ -67,10 +67,10 @@ sp_vision_dashboard_panel/
 
 ## Seed Copy Status
 
-`/tmp/sp_vision_dashboard_panel_seed/` 只是本次迁移使用的临时种子目录，不是长期方案。正式前端成果已经落到：
+`/tmp/sp_vision_dashboard_panel_seed/` 只是本次迁移使用的临时种子目录，不是长期方案。正式前端成果应落到独立仓库：
 
 ```text
-/home/ywag/sp_vision_dashboard_panel
+sp_vision_dashboard_panel
 ```
 
 ## Contract Source

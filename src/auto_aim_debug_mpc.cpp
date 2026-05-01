@@ -59,7 +59,7 @@ int main(int argc, char * argv[])
   auto_aim::Solver solver(config_path);
   auto_aim::Tracker tracker(config_path, solver);
   auto_aim::Planner planner(config_path);
-  AutoAimDebugDashboard dashboard(dashboard_config, planner);
+  AutoAimDebugDashboard dashboard(dashboard_config, config_path, planner);
 
   tools::ThreadSafeQueue<std::optional<auto_aim::Target>, true> target_queue(1);
   target_queue.push(std::nullopt);
