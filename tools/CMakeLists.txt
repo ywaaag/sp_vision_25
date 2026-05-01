@@ -13,3 +13,23 @@ add_library(tools OBJECT
     pid.cpp
     crc.cpp
 )
+
+if(PahoMqttCpp_FOUND)
+    add_library(mqtt_bridge STATIC
+        mqtt_bridge.cpp
+    )
+    target_include_directories(mqtt_bridge PUBLIC
+        ${PROJECT_SOURCE_DIR}
+    )
+    target_link_libraries(mqtt_bridge PUBLIC
+        nlohmann_json::nlohmann_json
+    )
+
+    if(TARGET PahoMqttCpp::paho-mqttpp3)
+        target_link_libraries(mqtt_bridge PUBLIC PahoMqttCpp::paho-mqttpp3)
+    elseif(TARGET paho-mqttpp3)
+        target_link_libraries(mqtt_bridge PUBLIC paho-mqttpp3)
+    else()
+        target_link_libraries(mqtt_bridge PUBLIC paho-mqttpp3 paho-mqtt3as)
+    endif()
+endif()

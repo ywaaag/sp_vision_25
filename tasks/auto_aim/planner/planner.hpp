@@ -3,6 +3,7 @@
 
 #include <Eigen/Dense>
 #include <list>
+#include <mutex>
 #include <optional>
 
 #include "tasks/auto_aim/target.hpp"
@@ -33,13 +34,26 @@ struct Plan
 class Planner
 {
 public:
+  struct HotParams
+  {
+    double yaw_offset_deg;
+    double pitch_offset_deg;
+    double fire_thresh;
+    double decision_speed;
+    double high_speed_delay_time;
+    double low_speed_delay_time;
+  };
+
   Eigen::Vector4d debug_xyza;
   Planner(const std::string & config_path);
 
   Plan plan(Target target, double bullet_speed);
   Plan plan(std::optional<Target> target, double bullet_speed);
+  HotParams get_hot_params() const;
+  bool apply_hot_param(const std::string & key, double value);
 
 private:
+  mutable std::mutex params_mutex_;
   double yaw_offset_;
   double pitch_offset_;
   double fire_thresh_;
