@@ -39,7 +39,9 @@ void Recorder::save_to_file()
 {
   while (!stop_thread_) {
     FrameData frame;
-    queue_.pop(frame);  // 从队列中取出帧数据
+    if (!queue_.pop(frame)) {
+      break;
+    }
     if (frame.img.empty()) {
       tools::logger()->debug("Recorder received empty img. Skip this frame.");
       continue;

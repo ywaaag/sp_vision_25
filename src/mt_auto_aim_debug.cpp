@@ -1,6 +1,7 @@
 #include <fmt/core.h>
 
 #include <chrono>
+#include <list>
 #include <nlohmann/json.hpp>
 #include <opencv2/opencv.hpp>
 
@@ -65,7 +66,12 @@ int main(int argc, char * argv[])
   while (!exiter.exit()) {
     auto t0 = std::chrono::steady_clock::now();
     /// 自瞄核心逻辑
-    auto [img, armors, t] = detector.debug_pop();
+    cv::Mat img;
+    std::list<auto_aim::Armor> armors;
+    std::chrono::steady_clock::time_point t;
+    if (!detector.debug_pop(img, armors, t)) {
+      break;
+    }
     Eigen::Quaterniond q = cboard.imu_at(t - 1ms);
     mode = cboard.mode;
 

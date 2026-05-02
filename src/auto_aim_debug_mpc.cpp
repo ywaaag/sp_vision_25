@@ -5,14 +5,19 @@
 #include <nlohmann/json.hpp>
 #include <opencv2/opencv.hpp>
 #include <optional>
+#include <string>
 #include <thread>
+#include <vector>
 
 #include "io/camera.hpp"
 #include "io/gimbal/gimbal.hpp"
+#include "src/auto_aim_debug_dashboard.hpp"
 #include "tasks/auto_aim/planner/planner.hpp"
 #include "tasks/auto_aim/solver.hpp"
 #include "tasks/auto_aim/tracker.hpp"
 #include "tasks/auto_aim/yolo.hpp"
+#include "tools/dashboard_cli.hpp"
+#include "tools/dashboard_config.hpp"
 #include "tools/exiter.hpp"
 #include "tools/img_tools.hpp"
 #include "tools/logger.hpp"
@@ -24,6 +29,9 @@ using namespace std::chrono_literals;
 
 const std::string keys =
   "{help h usage ? |                        | output command line help }"
+  "{dashboard      |                        | enable MQTT Dashboard}"
+  "{robot-id       | myrobot                | MQTT Dashboard robot id}"
+  "{mqtt-host      | tcp://127.0.0.1:1883   | MQTT broker URI}"
   "{@config-path   | configs/standard3.yaml | yaml config path }"
   "{imu-delay-ms   | 6.0                    | IMU delay in milliseconds }";
 
@@ -32,13 +40,19 @@ int main(int argc, char * argv[])
   tools::Exiter exiter;
   tools::Plotter plotter;
 
-  cv::CommandLineParser cli(argc, argv, keys);
+  auto normalized_args = tools::dashboard::cli::normalize_cli_args(argc, argv);
+  auto normalized_argv = tools::dashboard::cli::make_cli_argv(normalized_args);
+  cv::CommandLineParser cli(
+    static_cast<int>(normalized_argv.size()), normalized_argv.data(), keys);
   auto config_path = cli.get<std::string>(0);
   auto imu_delay_ms = cli.get<double>("imu-delay-ms");
   if (cli.has("help") || config_path.empty()) {
     cli.printMessage();
     return 0;
   }
+  const auto dashboard_config = tools::dashboard::load_dashboard_config(
+    config_path,
+    tools::dashboard::cli::make_dashboard_overrides(normalized_args, cli.has("dashboard")));
 
   io::Gimbal gimbal(config_path);
   io::Camera camera(config_path);
@@ -47,6 +61,7 @@ int main(int argc, char * argv[])
   auto_aim::Solver solver(config_path);
   auto_aim::Tracker tracker(config_path, solver);
   auto_aim::Planner planner(config_path);
+  AutoAimDebugDashboard dashboard(dashboard_config, config_path, planner);
 
   tools::ThreadSafeQueue<std::optional<auto_aim::Target>, true> target_queue(1);
   target_queue.push(std::nullopt);
@@ -57,7 +72,10 @@ int main(int argc, char * argv[])
     uint16_t last_bullet_count = 0;
 
     while (!quit) {
-      auto target = target_queue.front();
+      std::optional<auto_aim::Target> target;
+      if (!target_queue.front(target)) {
+        break;
+      }
       auto gs = gimbal.state();
       auto plan = planner.plan(target, gs.bullet_speed);
 
@@ -100,6 +118,7 @@ int main(int argc, char * argv[])
 
       data["w"] = target.has_value() ? target->ekf_x()[7] : 0.0;
       plotter.plot(data);
+      dashboard.push_data(data);
 
       std::this_thread::sleep_for(10ms);
     }
@@ -111,8 +130,10 @@ int main(int argc, char * argv[])
     std::chrono::duration<double, std::milli>(imu_delay_ms));
 
   while (!exiter.exit()) {
+    dashboard.handle_commands();
+
     camera.read(img, t);
-    auto q = gimbal.q(t - imu_delay);
+    Eigen::Quaterniond q = gimbal.q(t - imu_delay);
 
     solver.set_R_gimbal2world(q);
     auto armors = yolo.detect(img);
@@ -136,6 +157,7 @@ int main(int argc, char * argv[])
       data["armor_center_y"] = armor.center_norm.y;
     }
     plotter.plot(data);
+    dashboard.push_data(data);
 
     if (!targets.empty()) {
       auto target = targets.front();
@@ -162,6 +184,7 @@ int main(int argc, char * argv[])
 
   quit = true;
   if (plan_thread.joinable()) plan_thread.join();
+  dashboard.stop();
   gimbal.send(false, false, 0, 0, 0, 0, 0, 0);
 
   return 0;
