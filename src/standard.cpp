@@ -35,7 +35,7 @@ int main(int argc, char * argv[])
   }
 
   tools::Exiter exiter;
-  tools::Plotter plotter;
+  auto plotter = tools::Plotter::from_config(config_path);
   tools::Recorder recorder;
 
   io::CBoard cboard(config_path);

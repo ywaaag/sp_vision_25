@@ -37,7 +37,7 @@ int main(int argc, char * argv[])
   }
 
   tools::Exiter exiter;
-  tools::Plotter plotter;
+  auto plotter = tools::Plotter::from_config(config_path);
   tools::Recorder recorder(100);  //根据实际帧率调整
 
   io::CBoard cboard(config_path);

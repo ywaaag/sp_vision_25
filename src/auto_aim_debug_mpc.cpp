@@ -37,7 +37,6 @@ const std::string keys =
 int main(int argc, char * argv[])
 {
   tools::Exiter exiter;
-  tools::Plotter plotter;
 
   auto normalized_args = tools::dashboard::cli::normalize_cli_args(argc, argv);
   auto normalized_argv = tools::dashboard::cli::make_cli_argv(normalized_args);
@@ -51,6 +50,7 @@ int main(int argc, char * argv[])
   const auto dashboard_config = tools::dashboard::load_dashboard_config(
     config_path,
     tools::dashboard::cli::make_dashboard_overrides(normalized_args, cli.has("dashboard")));
+  auto plotter = tools::Plotter::from_config(config_path);
 
   io::Gimbal gimbal(config_path);
   io::Camera camera(config_path);
