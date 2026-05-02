@@ -31,7 +31,7 @@ int main(int argc, char * argv[])
   auto config_path = cli.get<std::string>("@config-path");
 
   tools::Exiter exiter;
-  tools::Plotter plotter;
+  auto plotter = tools::Plotter::from_config(config_path);
   io::Camera camera(config_path);
   io::DM_IMU dm_imu;
 

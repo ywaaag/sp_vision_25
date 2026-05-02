@@ -96,6 +96,11 @@ max_pitch_acc: 100
 Q_pitch: [9e6, 0]
 R_pitch: [1]
 
+#####-----plotter-----#####
+plotter:
+  host: "127.0.0.1" # PlotJuggler UDP host, change to Windows LAN IP for cross-device debug
+  port: 9870
+
 #####-----buff_detector参数-----#####
 model: "assets/yolo11_buff_int8.xml"
 

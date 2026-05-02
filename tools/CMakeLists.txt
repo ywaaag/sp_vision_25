@@ -14,6 +14,8 @@ add_library(tools OBJECT
     crc.cpp
 )
 
+target_link_libraries(tools PUBLIC yaml-cpp)
+
 if(PahoMqttCpp_FOUND)
     add_library(mqtt_bridge STATIC
         mqtt_bridge.cpp

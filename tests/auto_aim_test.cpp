@@ -35,7 +35,7 @@ int main(int argc, char * argv[])
   auto start_index = cli.get<int>("start-index");
   auto end_index = cli.get<int>("end-index");
 
-  tools::Plotter plotter;
+  auto plotter = tools::Plotter::from_config(config_path);
   tools::Exiter exiter;
 
   auto video_path = fmt::format("{}.avi", input_path);

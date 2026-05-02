@@ -31,7 +31,7 @@ int main(int argc, char * argv[])
   }
 
   tools::Exiter exiter;
-  tools::Plotter plotter;
+  auto plotter = tools::Plotter::from_config(config_path);
 
   io::Gimbal gimbal(config_path);
   auto_aim::Planner planner(config_path);

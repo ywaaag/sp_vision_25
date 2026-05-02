@@ -29,7 +29,7 @@ int main(int argc, char * argv[])
   }
 
   tools::Exiter exiter;
-  tools::Plotter plotter;
+  auto plotter = tools::Plotter::from_config(config_path);
 
   auto_aim::Planner planner(config_path);
   auto_aim::Target target(d, w, 0.2, 0.1);
