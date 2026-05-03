@@ -102,7 +102,7 @@ CandidateResult finalize_result(double delay_ms, const PoseAccumulator & accumul
   result.std_xyz = var_xyz.cwiseMax(0.0).cwiseSqrt();
   result.std_ypr = var_ypr.cwiseMax(0.0).cwiseSqrt();
   result.mean_distance = accumulator.sum_distance / count;
-  result.score = result.std_xyz.norm();
+  result.score = result.std_ypr[0];
   return result;
 }
 
@@ -134,9 +134,10 @@ std::optional<auto_aim::Armor> select_armor(std::list<auto_aim::Armor> & armors)
 void log_result(const CandidateResult & result)
 {
   const auto std_ypr_deg = result.std_ypr * (180.0 / CV_PI);
+  const double score_deg = rad2deg(result.score);
   tools::logger()->info(
-    "delay={:.2f} ms score={:.5f} m samples={} valid={} std_xyz=[{:.4f}, {:.4f}, {:.4f}] m std_ypr=[{:.2f}, {:.2f}, {:.2f}] deg",
-    result.delay_ms, result.score, result.samples, result.valid ? "yes" : "no", result.std_xyz[0],
+    "delay={:.2f} ms score(yaw_std)={:.2f} deg samples={} valid={} std_xyz=[{:.4f}, {:.4f}, {:.4f}] m std_ypr=[{:.2f}, {:.2f}, {:.2f}] deg",
+    result.delay_ms, score_deg, result.samples, result.valid ? "yes" : "no", result.std_xyz[0],
     result.std_xyz[1], result.std_xyz[2], std_ypr_deg[0], std_ypr_deg[1], std_ypr_deg[2]);
 }
 }  // namespace
@@ -340,8 +341,8 @@ int main(int argc, char * argv[])
   }
 
   tools::logger()->info(
-    "Recommended imu delay = {:.2f} ms, score = {:.5f} m, std_xyz = [{:.4f}, {:.4f}, {:.4f}] m",
-    best_result->delay_ms, best_result->score, best_result->std_xyz[0], best_result->std_xyz[1],
+    "Recommended imu delay = {:.2f} ms, yaw_std = {:.2f} deg, std_xyz = [{:.4f}, {:.4f}, {:.4f}] m",
+    best_result->delay_ms, rad2deg(best_result->score), best_result->std_xyz[0], best_result->std_xyz[1],
     best_result->std_xyz[2]);
   return 0;
 }
