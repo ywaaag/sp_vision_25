@@ -12,7 +12,6 @@
 #include "io/camera.hpp"
 #include "io/gimbal/gimbal.hpp"
 #include "io/usbcamera/usbcamera.hpp"
-#include "tasks/auto_aim/detector.hpp"
 #include "tasks/auto_aim/planner/planner.hpp"
 #include "tasks/auto_aim/solver.hpp"
 #include "tasks/auto_aim/tracker.hpp"
@@ -29,12 +28,15 @@ using namespace std::chrono_literals;
 
 namespace
 {
-constexpr auto GIMBAL_DELAY = std::chrono::milliseconds(28);
+constexpr auto GIMBAL_DELAY = std::chrono::milliseconds(7);
 constexpr auto USB_STARTUP_SETTLE = std::chrono::milliseconds(300);
 constexpr double USB_LEFT_YAW_OFFSET = 2.7;
 constexpr double USB_RIGHT_YAW_OFFSET = -2.7;
-constexpr char USB_LEFT_DEVICE[] = "usb_cam_left";
-constexpr char USB_RIGHT_DEVICE[] = "usb_cam_right";
+constexpr double USB_LEFT_TARGET_YAW_TRIM = -0.44;
+constexpr double USB_RIGHT_TARGET_YAW_TRIM = 0.2;
+constexpr double USB_TARGET_PITCH_TRIM = 0.3;
+constexpr char USB_LEFT_DEVICE[] = "video2";
+constexpr char USB_RIGHT_DEVICE[] = "video0";
 
 enum class TargetSource
 {
@@ -90,6 +92,18 @@ double usb_yaw_offset(TargetSource source)
       return USB_LEFT_YAW_OFFSET;
     case TargetSource::usb_right:
       return USB_RIGHT_YAW_OFFSET;
+    default:
+      return 0.0;
+  }
+}
+
+double usb_target_yaw_trim(TargetSource source)
+{
+  switch (source) {
+    case TargetSource::usb_left:
+      return USB_LEFT_TARGET_YAW_TRIM;
+    case TargetSource::usb_right:
+      return USB_RIGHT_TARGET_YAW_TRIM;
     default:
       return 0.0;
   }
@@ -179,8 +193,7 @@ int main(int argc, char * argv[])
   io::Camera camera(config_path);
 
   auto_aim::YOLO yolo(config_path, true);
-  auto_aim::Detector usb_left_detector(config_path, false);
-  auto_aim::Detector usb_right_detector(config_path, false);
+  auto_aim::YOLO usb_yolo(config_path, false);
 
   auto_aim::Solver main_solver(config_path);
   auto_aim::Solver usb_left_solver(config_path);
@@ -210,9 +223,12 @@ int main(int argc, char * argv[])
       const bool use_yaw_diff =
         target_command.source == TargetSource::usb_left || target_command.source == TargetSource::usb_right;
       if (use_yaw_diff && plan.control) {
-        auto yaw_offset = gs.yaw_diff + usb_yaw_offset(target_command.source);
+        auto yaw_offset =
+          gs.yaw_diff + usb_yaw_offset(target_command.source) + usb_target_yaw_trim(target_command.source);
         plan.target_yaw = tools::limit_rad(plan.target_yaw + yaw_offset);
         plan.yaw = tools::limit_rad(plan.yaw + yaw_offset);
+        plan.target_pitch += USB_TARGET_PITCH_TRIM;
+        plan.pitch += USB_TARGET_PITCH_TRIM;
       }
 
       const bool fire = target_command.source == TargetSource::main && plan.fire;
@@ -232,6 +248,8 @@ int main(int argc, char * argv[])
       data["gimbal_pitch_vel"] = gs.pitch_vel;
       data["yaw_diff"] = gs.yaw_diff;
       data["usb_yaw_offset"] = usb_yaw_offset(target_command.source);
+      data["usb_target_yaw_trim"] = usb_target_yaw_trim(target_command.source);
+      data["usb_target_pitch_trim"] = use_yaw_diff ? USB_TARGET_PITCH_TRIM : 0.0;
       data["active_source"] = static_cast<int>(target_command.source);
       data["use_yaw_diff"] = use_yaw_diff ? 1 : 0;
 
@@ -284,9 +302,9 @@ int main(int argc, char * argv[])
       next_usb_result.left_img = usb_left_img;
       next_usb_result.right_img = usb_right_img;
       next_usb_result.left_armors =
-        filter_enemy_armors(usb_left_detector.detect(usb_left_img), enemy_color);
+        filter_enemy_armors(usb_yolo.detect(usb_left_img), enemy_color);
       next_usb_result.right_armors =
-        filter_enemy_armors(usb_right_detector.detect(usb_right_img), enemy_color);
+        filter_enemy_armors(usb_yolo.detect(usb_right_img), enemy_color);
 
       solve_armors(next_usb_result.left_armors, usb_left_solver);
       solve_armors(next_usb_result.right_armors, usb_right_solver);

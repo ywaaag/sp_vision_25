@@ -120,7 +120,7 @@ const std::string keys =
   "{@config-path   | configs/standard3.yaml | yaml配置文件路径 }"
   "{camera-source  | main                   | 标定相机源(main / usb_left / usb_right) }"
   "{delay-min-ms   | 0                      | delay搜索起点(ms) }"
-  "{delay-max-ms   | 12                     | delay搜索终点(ms) }"
+  "{delay-max-ms   | 40                     | delay搜索终点(ms) }"
   "{delay-step-ms  | 1                      | delay搜索步长(ms) }"
   "{scan-amplitude | 30.0                   | 左右摆动幅度(度) }"
   "{scan-period    | 2.0                    | 往返周期(秒) }"
@@ -186,13 +186,20 @@ int main(int argc, char * argv[])
   }
   const auto initial_state = gimbal.state();
   const double center_yaw = initial_state.yaw;
-  const double center_pitch = initial_state.pitch;
+  const double initial_pitch = initial_state.pitch;
   const double amplitude_rad = scan_amplitude_deg / 57.3;
   const double omega = 2.0 * CV_PI / scan_period_s;
 
+  auto send_yaw_only = [&](float yaw, float yaw_vel, float yaw_acc) {
+    const auto current_state = gimbal.state();
+    gimbal.send(
+      true, false, yaw, yaw_vel, yaw_acc, current_state.pitch, current_state.pitch_vel, 0.0f);
+    return current_state;
+  };
+
   tools::logger()->info(
-    "[auto_aim_delay_tuner] source={} center_yaw={:.2f}deg center_pitch={:.2f}deg amplitude={:.2f}deg",
-    camera_source_name(camera_source), center_yaw * 57.3, center_pitch * 57.3, scan_amplitude_deg);
+    "[auto_aim_delay_tuner] source={} center_yaw={:.2f}deg initial_pitch={:.2f}deg amplitude={:.2f}deg pitch_passthrough=true",
+    camera_source_name(camera_source), center_yaw * 57.3, initial_pitch * 57.3, scan_amplitude_deg);
 
   std::vector<CandidateResult> results;
 
@@ -222,10 +229,9 @@ int main(int argc, char * argv[])
       const double desired_yaw_acc =
         elapsed < settle_time_s ? 0.0 : -amplitude_rad * omega * omega * std::sin(omega * active_t);
 
-      gimbal.send(true, false, desired_yaw, desired_yaw_vel, desired_yaw_acc, center_pitch, 0.0f, 0.0f);
+      const auto gs = send_yaw_only(desired_yaw, desired_yaw_vel, desired_yaw_acc);
 
       const auto q = gimbal.q(t - std::chrono::milliseconds(delay_ms));
-      const auto gs = gimbal.state();
       solver.set_R_gimbal2world(is_usb_camera(camera_source) ? usb_world_q(q) : q);
 
       auto armors =
@@ -283,11 +289,11 @@ int main(int argc, char * argv[])
         camera_source_name(camera_source), result.delay_ms, result.samples);
     }
 
-    gimbal.send(true, false, center_yaw, 0.0f, 0.0f, center_pitch, 0.0f, 0.0f);
+    send_yaw_only(center_yaw, 0.0f, 0.0f);
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
   }
 
-  gimbal.send(true, false, center_yaw, 0.0f, 0.0f, center_pitch, 0.0f, 0.0f);
+  send_yaw_only(center_yaw, 0.0f, 0.0f);
 
   const auto best_it = std::min_element(
     results.begin(), results.end(), [min_samples](const CandidateResult & a, const CandidateResult & b) {

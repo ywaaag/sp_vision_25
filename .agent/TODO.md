@@ -53,6 +53,9 @@
 暂无
 
 ## 6. 最近同步
+- **2026-05-04**: `auto_aim_delay_tuner` 下发扫角指令时不再把 `pitch` 固定在启动时角度，当前改为仅控制 `yaw`、透传当前 `pitch/pitch_vel`，避免延迟标定过程中额外拉扯俯仰轴。
+- **2026-05-03**: `sentry_omni_perception_debug_mpc` 的 USB 下发补偿已新增相机侧微调：左相机目标 yaw 在原有 `yaw_diff + 固定夹角` 基础上再减 `0.5rad`，右相机再加 `0.2rad`，左右 USB 的目标 pitch 统一再加 `0.3rad`；当前同时对 `plan.target_*` 与实际下发 `plan.*` 生效，便于联调观察。
+- **2026-05-03**: `sentry_omni_perception_debug_mpc` 的左右 USB 感知相机检测链已从传统 `auto_aim::Detector` 切到神经网络 `auto_aim::YOLO`；当前 USB 线程内使用独立 `YOLO` 实例顺序推理左右画面，保留原有敌方颜色过滤、解算、最近目标选择与左右 `Tracker` 逻辑不变。
 - **2026-04-24**: 新增 `omni_perception_delay_tuner`，仿照 `auto_aim_delay_tuner` 的自动扫角评分流程，为左右 USB 感知相机提供独立的姿态延迟标定入口；当前通过 `--camera-side=left|right` 选择相机，并复用 `sentry_omni_perception_debug_mpc` 的 `usb_world_q + Detector + 最近装甲板 + Tracker` 链路。
 - **2026-04-24**: 传统 `auto_aim::Detector` 的大小装甲板分型阈值已从 `tasks/auto_aim/detector.cpp` 的硬编码比值接入 YAML。`configs/standard3.yaml` 新增 `small_armor_max_ratio` / `big_armor_min_ratio`，其中当前 `big_armor_min_ratio` 调到 `3.2`，用于减轻 USB 感知相机把小装甲板直接判成 `big` 的情况。
 - **2026-04-23**: `auto_aim_delay_tuner` 已扩展为支持 `--camera-source=main|usb_left|usb_right`。主相机继续走 YOLO 检测链；左右 USB 版本走当前仓库的传统 `Detector + Tracker`，并复用 `sentry_omni_perception_debug_mpc` 的 USB 姿态几何假设：yaw/roll 跟随云台、`pitch=0`。

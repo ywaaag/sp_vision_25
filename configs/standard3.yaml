@@ -1,5 +1,5 @@
-enemy_color: "red"
-# enemy_color: "blue"
+# enemy_color: "red"
+enemy_color: "blue"
 
 #####-----神经网络参数-----#####
 yolo_name: yolov5
@@ -28,7 +28,7 @@ fov_v: 56.7
 new_fov_h: 27 #67
 new_fov_v: 40.9
 usb_frame_rate: 60
-usb_exposure: 60 #1-80000______250
+usb_exposure: 600 #1-80000______250
 usb_gamma: 0
 usb_gain: 90 #0-96
 
