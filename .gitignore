@@ -13,5 +13,7 @@ testvideos/
 watchdog.sh
 records_24/
 records_25/
+.agent/settings.local.json
+.agent/*.backup
 *.deb
 *.jpg

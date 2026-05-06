@@ -38,7 +38,6 @@ void detect_frame(tools::Frame && frame, auto_aim::YOLO & yolo)
 int main(int argc, char * argv[])
 {
   tools::Exiter exiter;
-  tools::Plotter plotter;
   // tools::Recorder recorder(100);
 
   cv::CommandLineParser cli(argc, argv, keys);
@@ -47,6 +46,7 @@ int main(int argc, char * argv[])
     cli.printMessage();
     return 0;
   }
+  auto plotter = tools::Plotter::from_config(config_path);
 
   // 处理线程函数
   auto process_thread = std::thread([&]() {

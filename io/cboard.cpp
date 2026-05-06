@@ -14,8 +14,14 @@ CBoard::CBoard(const std::string & config_path)
 // 注意: callback的运行会早于Cboard构造函数的完成
 {
   tools::logger()->info("[Cboard] Waiting for q...");
-  queue_.pop(data_ahead_);
-  queue_.pop(data_behind_);
+  if (!queue_.pop(data_ahead_)) {
+    data_ahead_ = {Eigen::Quaterniond::Identity(), std::chrono::steady_clock::time_point{}};
+    tools::logger()->warn("[Cboard] Queue closed before first IMU sample.");
+  }
+  if (!queue_.pop(data_behind_)) {
+    data_behind_ = data_ahead_;
+    tools::logger()->warn("[Cboard] Queue closed before second IMU sample.");
+  }
   tools::logger()->info("[Cboard] Opened.");
 }
 
@@ -24,7 +30,9 @@ Eigen::Quaterniond CBoard::imu_at(std::chrono::steady_clock::time_point timestam
   if (data_behind_.timestamp < timestamp) data_ahead_ = data_behind_;
 
   while (true) {
-    queue_.pop(data_behind_);
+    if (!queue_.pop(data_behind_)) {
+      return data_ahead_.q;
+    }
     if (data_behind_.timestamp > timestamp) break;
     data_ahead_ = data_behind_;
   }

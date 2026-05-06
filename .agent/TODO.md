@@ -2,74 +2,83 @@
 
 # 开发任务与进度跟踪 (TODO.md)
 
-## 1. 文档职责
-- 本文档只维护当前状态、待办、归档和最近同步结果。
-- 开发规范、容器进入方式和标准运行命令看 `.agent/DEVELOPMENT.md`。
-- 架构、协议和坐标链事实看 `.agent/KNOWLEDGE.md`。
-- 具体报错、联调记录和排障路径看 `.agent/TROUBLESHOOTING.md`。
+## 1. 使用方式
+- 开始任务前，先看 `当前状态` 与 `当前待办`，再决定是否继续读取 `KNOWLEDGE.md` 或 `TROUBLESHOOTING.md`。
+- 若文档与实现冲突，以源码、`configs/*.yaml`、`CMakeLists.txt` 为准，再回写 `.agent/` 文档。
+- 本文件只保留任务状态、维护入口和高层归档；详细技术结论应沉淀到 `.agent/KNOWLEDGE.md`。
 
 ## 2. 当前状态
-- 2026-04-15 已完成 `gimbal` 串口协议和控制语义的一轮源码校准。
-- 2026-04-15 已明确：构建、运行、调试默认在 Docker 容器 `Combat_Sentry2026` 内完成。
-- 2026-04-16 已确认 `standard_mpc configs/standard3.yaml` 可以在当前容器内正常启动，当前程序是无 GUI 的 headless 主程序。
-- 2026-04-16 已确认 `auto_aim_debug_mpc configs/standard3.yaml` 的主要显示问题来自宿主机 X11 授权；在宿主机执行 `xhost +SI:localuser:root` 后，程序已能在当前容器内正常启动并持续运行。
-- 2026-04-16 当前联调焦点已经从“容器/X11/GTK 初始化失败”转移到“自瞄链路行为本身”，终端已出现 `[Tracker] Target diverged!` 等算法层日志。
-- 2026-04-15 已形成“全向感知 V1”方案，但 `tasks/omniperception` 现状仍是原型，不能直接视为串口主线可用实现。
-- 2026-04-22 `sentry_omni_perception_debug_mpc` 已将主工业相机链路与双 USB 回退链路解耦：主线程只消费工业相机，双 USB 在独立线程内完成取图、姿态对齐、传统 `Detector`、解算与各自 `Tracker`，主相机不再被 60fps USB 取图节奏限制；USB 回退仍按最近距离选候选目标，在上行 `yaw_diff` 基础上额外叠加左 `+120°` / 右 `-120°` 的固定 yaw 偏置，并保持 `fire=false`。
-- 2026-04-21 已新增离线 `buff_detect_test`，默认使用 `configs/standard3.yaml` 检测 `assets/demo.avi` 中的 buff，并在窗口中叠加模型关键点与 `PowerRune` 几何点用于快速目检。
-- 2026-04-21 已新增 `tasks/auto_buff_fyt`，将 `rm_rune` 的 YOLOX 能量机关检测、颜色/类型筛选和 R 标修正迁入当前仓库，并保持 `auto_buff` 原有 `Target/Aimer` 预测击打链路复用。
-- 2026-04-21 已将 `buff_fyt_detector.confidence_threshold` 收紧到 `0.7`，并把 `buff_detect_fyt_test` 的统计/绘制口径固定为颜色过滤后的候选；实测 `buff_detect_fyt_test --display=false assets/demo.avi` 时整段 `196` 帧中模型命中 `66` 帧，进入原有解算/跟踪链路 `61` 帧。
-- 2026-04-21 已新增 `auto_buff_fyt_debug_mpc`，按 `auto_buff_debug_mpc` 结构接入 `auto_buff_fyt` 检测链，并在窗口中叠加 FYT rune 候选框、R 标二值 ROI 与原有 buff 重投影调试信息。
-- 2026-04-21 已新增 `standard_fyt_mpc`，按 `standard_mpc` 结构接入 `auto_buff_fyt` 打符检测链，保留原有自瞄、ROS 和 MPC 线程模型；当前已通过编译。
-- 2026-04-21 已修正 `auto_buff_fyt` 的 `R` 标传统矫正逻辑：`buff_fyt_detector.min_lightness` 现在真实参与二值化，默认值为 `130`；此前配置项存在但代码实际始终走 `OTSU`。
-- 2026-04-21 已新增 `auto_aim_delay_tuner`，用于固定静止装甲板场景下自动左右扫 `±30°` 并比较不同 `imu delay` 对 `target_yaw` 波动的影响，最终输出最优延迟值。
-- 2026-04-22 已修正 `tools::Recorder` 的 CFR 录像时间轴：录像现在按真实输入时间戳补帧/限帧，并让 `.avi` 与同名 `.txt` 保持逐帧对齐，避免实际采样帧率低于配置帧率时出现回放加速。
-- 2026-04-22 已下调 `buff_fyt_detector.confidence_threshold` 到 `0.5`，并增强 `R` 标修正的先验与轮廓匹配鲁棒性：`assets/demo.avi` 离线统计从 `66/196` 提升到 `78/196`，`assets/big.avi` 从 `95/250` 提升到 `217/250`。
-- `yaw_diff` 当前只透传和调试输出，尚未进入上层闭环；其真实单位、方向和零点仍需实测。
+- 2026-04-04 已完成一次全局上下文审计，`standard_mpc` 与 `auto_aim_debug_mpc` 的核心知识已同步到 `.agent/`。
+- 已沉淀的主题包括：标准 MPC 数据链路、调试模式 JSON 字段、坐标系系统、控制指令语义、下位机通信协议。
+- 2026-04-26 MQTT Dashboard 第二阶段 E/F 基线进入合并收尾：Docker smoke 与前端控制面板已对齐，协议裁剪为不承载图像或视频流。
+- 2026-04-26 MQTT Dashboard 第二阶段 H 曾实现热调参模型与 Planner/Buff Aimer apply 接口；2026-04-30 范围收缩后当前只保留 Planner 热更新。
+- 2026-04-27 MQTT Dashboard 第二阶段 G/H 合并收口完成：`control/cmd` 统一使用 `command` 字段，`DashboardParams` 完整 payload 通过 `MqttBridge::*_payload` 接口发布，I 阶段可接入业务入口。
+- 2026-04-27 MQTT Dashboard 前端已融合 `preview.html` 布局，参数面板改为基于 `configs/standard3.yaml` 的 schema 目录，非热参数只读展示。
+- 2026-04-27 MQTT Dashboard 生产收口：Dashboard 网络服务与视觉主程序分离，主程序由人工在真实硬件环境启动。
+- 2026-04-27 MQTT Dashboard 启动参数已收敛到 `configs/standard3.yaml` 的 `dashboard` 配置段，CLI 仍可覆盖。
+- 2026-04-29 MQTT Dashboard PR review 收口：`ThreadSafeQueue` 关闭后会唤醒等待线程，Dashboard CLI/YAML 解析抽到共享 helper，Dashboard 网络服务默认允许局域网访问。
+- 2026-04-29 MQTT Dashboard 静态前端曾拆为多文件结构；2026-04-30 后前端成果已迁出视觉仓库。
+- 2026-04-29 MQTT Dashboard 前端曾升级为轻量 Panel 工作台；2026-04-30 后浏览器 UI 与服务容器已迁往独立前端仓库。
+- 2026-04-29 MQTT Dashboard 合并前边界收口：Dashboard CLI helper 改为 `tools/dashboard_cli.*` 并归入 `dashboard_config`，前端 control topic 映射回收到 `core/protocol.js`，vendor license 信息已补齐。
+- 2026-04-30 MQTT Dashboard PR 范围已收缩为 `auto_aim_debug_mpc` only：`standard_mpc` 回到 upstream/main 行为，打符热参链路移除，视觉仓库只保留 MQTT 后端能力。
+- 2026-04-30 MQTT Dashboard 前后端分仓收口：`sp_vision_25` 只保留 MQTT 后端能力，浏览器 UI 与 Dashboard 服务容器迁往独立前端仓库。
+- 2026-04-30 MQTT Dashboard PR #4 review 修复：`ThreadSafeQueue` 恢复旧阻塞式 `front()`/`pop()` overload，`auto_aim_debug_mpc` 的 Dashboard 接入封装到 `src/auto_aim_debug_dashboard.*`。
+- 2026-05-01 MQTT Dashboard PR review 修复：`MqttBridge::start()` 失败路径补齐断连清理，Dashboard 参数 schema/current 改用实际启动配置路径。
+- 2026-05-01 MQTT Dashboard 文档收口：`docs/dashboard.md` 成为最终版维护入口，原运行边界、分仓、broker、build、changelog 和协议细节已合并精简。
+- 当前没有明确进行中的功能任务；本文件现阶段主要承担“维护面板”和“回填入口”的作用。
+- 历史任务细节已归档到下文，不再在顶部重复展开。
 
 ## 3. 当前待办
-### 3.1 高优先级联调
-1. 在“单进程独占相机”的前提下继续排查 `auto_aim_debug_mpc` 的跟踪发散问题，重点看检测、Tracker 状态机和参数配置。
-
-
-### 3.2 中长期任务
-1. 新建 `omnidirectional_mpc`，保持 `standard_mpc` 不动，把全向感知 V1 挂在串口主线上独立验证。
-2. 扩展三相机配置和双层 yaw 几何层，预留 `yaw_diff` 映射，当前先允许固定夹角占位。
-3. 跑通左右 USB 的独立 `detector + solver + tracker`，并把切枪逻辑接入主流程，切换阶段不开火。
-4. 实测标定 `yaw_diff`、左右 USB 外参和切枪链路；详细步骤与验收项统一维护在 `.agent/OMNIPERCEPTION_V1.md`。
+1. [ ] 在真实运行后回填性能数据（FPS、端到端延迟、CPU、内存），禁止估算。
+2. [ ] 若新增算法参数、接口约定或架构结论，更新 `.agent/KNOWLEDGE.md`。
+3. [ ] 若新增环境报错、依赖问题或联调坑点，更新 `.agent/TROUBLESHOOTING.md`。
+4. [ ] 若再次发现文档与实现不一致，优先核对 `src/standard_mpc.cpp`、`src/auto_aim_debug_mpc.cpp` 和 `configs/*.yaml`。
 
 ## 4. 已完成归档
 
+### 2026-04-04 文档校准批次
+
 | ID | 主题 | 状态 | 主要产出 |
 | :--- | :--- | :--- | :--- |
-| `TASK-000` | `.agent/` 全局校准 | 已完成 | 重新核对入口程序、构建目标、工作链路与 `.agent/` 文档的一致性。 |
-| `TASK-001` | gimbal 串口协议核查 | 已完成 | 核清 `GimbalToVision` / `VisionToGimbal` / `NavToGimbal` 的字段、包头、尾字节、校验和与上层使用方式。 |
-| `TASK-002` | gimbal 控制语义校准 | 已完成 | 澄清 `q` 的插值用法、`bullet_count` 的用途、`yaw/pitch` 控制字段的来源，以及 `pitch` 控制符号约定。 |
-| `TASK-003` | 容器图形联调链路打通 | 已完成 | 确认当前 `Combat_Sentry2026` 具备图形/USB/网络基础挂载，并验证 `xhost +SI:localuser:root` 可以让 `auto_aim_debug_mpc` 正常启动。 |
+| `TASK-000` | 全局架构审计与文档校准 | 已完成 | 校正 `standard_mpc` / `auto_aim_debug_mpc` 与文档的偏差，重写 `.agent/KNOWLEDGE.md` 相关章节，并更新 `.agent/DEVELOPMENT.md` 的构建命令。 |
+| `TASK-001` | 标准 MPC 自瞄完整链路分析 | 已完成 | 梳理相机输入、坐标变换、YOLO 检测、跟踪、EKF、规划、控制输出和打符模式的完整数据链路。 |
+| `TASK-002` | 调试模式 JSON 字段说明 | 已完成 | 整理 `Plotter` 输出字段的来源、坐标系、物理意义和单位。 |
+| `TASK-003` | 坐标系系统梳理 | 已完成 | 归纳 7 个坐标系、关键旋转矩阵、完整变换链和常见易错点。 |
+| `TASK-004` | 控制指令与相机-枪口标定澄清 | 已完成 | 明确控制指令的坐标系语义，并补齐手眼标定与弹道补偿链路说明。 |
+| `TASK-005` | 下位机通信协议与坐标系澄清 | 已完成 | 补齐串口/CAN 数据结构、四元数语义、控制指令含义与理想坐标系定义。 |
 
-## 5. 待回填实测
+### 本批次关键事实
+- EKF 状态向量为 11 维：`[x, vx, y, vy, z, vz, a, ω, r, l, h]`。
+- 规划线程调度为：标准模式有目标 `10ms`、空闲 `200ms`；调试模式固定 `10ms`。
+- 调试链路包含 JSON 数据记录与重投影可视化。
+- 视觉端发送给下位机的 `yaw` / `pitch` 语义已澄清为世界坐标系下的绝对角度。
+
+## 5. 性能事实核查 (Reality Check)
 > 仅在真实构建和运行后填写，禁止凭印象补值。
 
-暂无
+| 指标 | 目标值 | 当前实测值 | 状态 |
+| :--- | :--- | :--- | :--- |
+| 整体帧率 | 100+ FPS | 待测 | 未回填 |
+| 端到端延迟 | < 33ms | 待测 | 未回填 |
+| CPU 使用率 | < 70% | 待测 | 未回填 |
+| 内存占用 | < 1.5GB | 待测 | 未回填 |
 
-## 6. 最近同步
-- **2026-05-04**: `auto_aim_delay_tuner` 下发扫角指令时不再把 `pitch` 固定在启动时角度，当前改为仅控制 `yaw`、透传当前 `pitch/pitch_vel`，避免延迟标定过程中额外拉扯俯仰轴。
-- **2026-05-03**: `sentry_omni_perception_debug_mpc` 的 USB 下发补偿已新增相机侧微调：左相机目标 yaw 在原有 `yaw_diff + 固定夹角` 基础上再减 `0.5rad`，右相机再加 `0.2rad`，左右 USB 的目标 pitch 统一再加 `0.3rad`；当前同时对 `plan.target_*` 与实际下发 `plan.*` 生效，便于联调观察。
-- **2026-05-03**: `sentry_omni_perception_debug_mpc` 的左右 USB 感知相机检测链已从传统 `auto_aim::Detector` 切到神经网络 `auto_aim::YOLO`；当前 USB 线程内使用独立 `YOLO` 实例顺序推理左右画面，保留原有敌方颜色过滤、解算、最近目标选择与左右 `Tracker` 逻辑不变。
-- **2026-04-24**: 新增 `omni_perception_delay_tuner`，仿照 `auto_aim_delay_tuner` 的自动扫角评分流程，为左右 USB 感知相机提供独立的姿态延迟标定入口；当前通过 `--camera-side=left|right` 选择相机，并复用 `sentry_omni_perception_debug_mpc` 的 `usb_world_q + Detector + 最近装甲板 + Tracker` 链路。
-- **2026-04-24**: 传统 `auto_aim::Detector` 的大小装甲板分型阈值已从 `tasks/auto_aim/detector.cpp` 的硬编码比值接入 YAML。`configs/standard3.yaml` 新增 `small_armor_max_ratio` / `big_armor_min_ratio`，其中当前 `big_armor_min_ratio` 调到 `3.2`，用于减轻 USB 感知相机把小装甲板直接判成 `big` 的情况。
-- **2026-04-23**: `auto_aim_delay_tuner` 已扩展为支持 `--camera-source=main|usb_left|usb_right`。主相机继续走 YOLO 检测链；左右 USB 版本走当前仓库的传统 `Detector + Tracker`，并复用 `sentry_omni_perception_debug_mpc` 的 USB 姿态几何假设：yaw/roll 跟随云台、`pitch=0`。
-- **2026-04-23**: `sentry_omni_perception_debug_mpc` 的左右感知相机已改为通过 `/dev/usb_cam_left`、`/dev/usb_cam_right` 符号名打开；USB 感知分支的姿态解算改为保留 yaw/roll 并固定 `pitch=0`，避免直接跟随主云台俯仰；新增 `--display` 开关后可同时显示主相机、左 USB、右 USB 三路画面。
-- **2026-04-22**: `sentry_omni_perception_debug_mpc` 的 USB 回退下发新增固定左右 yaw 偏置。当前实现会在原有 `gs.yaw_diff` 基础上，针对 `usb_left` 额外叠加 `+120°`、针对 `usb_right` 额外叠加 `-120°`，并继续对 `plan.target_yaw` 与 `plan.yaw` 同步生效。
-- **2026-04-22**: 调整 `sentry_omni_perception_debug_mpc` 的线程模型。当前版本将双 USB 的取图、`gimbal.q(...)` 姿态对齐、传统检测、解算和跟踪迁到独立线程，主线程只跑工业相机 YOLO 主链并消费最新 USB 回退结果，避免 165fps 主相机被 60fps USB 阻塞；相关的 `io::Gimbal::q(t)` 也改为基于时间历史缓存的非消费式插值查询，便于多线程同时按时间取姿态。
-- **2026-04-22**: 针对 `auto_buff_fyt` 的低识别率问题，下调 `buff_fyt_detector.confidence_threshold` 至 `0.5`，并将 `R` 标修正改为使用同色候选的加权中心作为先验，同时在传统二值化轮廓中优先选包含先验的轮廓、否则回退到最近亮轮廓；离线复测 `assets/demo.avi` 为 `78/196`、`assets/big.avi` 为 `217/250`。
-- **2026-04-22**: 修正 `tools::Recorder` 的 AVI 录像时间轴。当前实现改为基于首帧时间戳建立固定输出帧率时间轴，慢于目标帧率时会补写保持帧，避免 `small.avi` / `big.avi` 这类录像因文件头 fps 固定而发生回放加速；同时 `.txt` 旁路姿态文件也改为按输出帧逐行对齐。
-- **2026-04-16**: 重整 `.agent/` 文档职责边界，把容器、X11、海康相机、`standard_mpc` / `auto_aim_debug_mpc` 的联调细节下沉到 `.agent/TROUBLESHOOTING.md`，并把 `DEVELOPMENT.md` 收回到开发规范。
-- **2026-04-15**: 在 `AGENTS.md` 增加“构建/运行/调试默认先启动并进入 Docker 容器”的元规则，并把当前容器名 `Combat_Sentry2026`、镜像 `combat_sentry_v1:latest` 与进入命令写入 `.agent/DEVELOPMENT.md`。
-- **2026-04-15**: 将全向感知 V1 的详细方案下沉到 `.agent/OMNIPERCEPTION_V1.md`，避免 `TODO.md` 混入过多设计细节。
-- **2026-04-21**: 新增 `buff_detect_test` 离线测试入口，默认走 `configs/standard3.yaml` 和 `assets/demo.avi`，用于单独验证 `auto_buff` 模型检测并可视化识别结果。
-- **2026-04-21**: 新增 `auto_buff_fyt` 模块与 `buff_detect_fyt_test`，移植 `rm_rune` 的 YOLOX 打符识别逻辑并在 `assets/demo.avi` 上完成离线验证。
-- **2026-04-21**: 新增 `auto_buff_fyt_debug_mpc` 调试入口，用于在线联调 `auto_buff_fyt` 检测链和原有 MPC 打符链路。
-- **2026-04-21**: 新增 `standard_fyt_mpc` 主程序入口，用于在 `standard_mpc` 主线上切换到 `auto_buff_fyt` 打符检测链。
+## 6. 更新日志 (Changelog)
+- **2026-04-15**: 重构 `TODO.md` 结构，合并重复执行记录，改为“当前状态 + 当前待办 + 已完成归档 + 性能回填”布局。
+- **2026-04-27**: 完成 Dashboard G/H 合并审查与接口收口，保持不接入 `src/standard_mpc.cpp` 或 `src/auto_aim_debug_mpc.cpp`。
+- **2026-04-27**: 融合 Dashboard 优化前端，并将参数 schema/current 扩展到 `configs/standard3.yaml` 参数目录；复合配置标记为只读、重启生效。
+- **2026-04-29**: 完成 Dashboard PR review 收口：队列关闭语义、CLI helper、LAN 默认暴露、Docker 检查脚本和部署文档已同步。
+- **2026-04-29**: 曾完成 Dashboard 静态前端解耦；2026-04-30 后相关浏览器资源已迁出视觉仓库。
+- **2026-04-29**: 曾完成 Dashboard Panel 工作台升级；2026-04-30 后相关前端实现已迁出视觉仓库。
+- **2026-04-29**: 完成 Dashboard 合并前解耦卫生收尾：CLI helper 命名和 CMake 归属收紧、前端 control topic 映射收回协议层、vendor license 补齐。
+- **2026-04-30**: 收缩 Dashboard PR 范围：只保留 `auto_aim_debug_mpc` 接入，`standard_mpc` 与 `buff_aimer.*` 回退到 upstream/main，文档补充同机/分离 LAN 拓扑。
+- **2026-04-30**: 完成 Dashboard 前后端分仓收口：移除本仓库前端静态资源和 Dashboard 服务容器绑定，新增前端迁移说明。
+- **2026-04-30**: 修复 Dashboard PR #4 review：队列兼容旧阻塞 API，修正 MQTT bridge namespace 风格，并封装自瞄调试入口 Dashboard 接入。
+- **2026-05-01**: 修复 Dashboard PR review：MQTT start 失败会 best-effort 关闭连接，DashboardParams 不再依赖硬编码 `configs/standard3.yaml`，前端分仓文档去除本机绝对路径。
+- **2026-05-01**: 精简 Dashboard 文档：新增 `docs/dashboard.md` 最终版，删除重复的运行、broker、build、分仓和 changelog 文档，保留 `docs/dashboard_mqtt_protocol.md` 作为兼容跳转。
+- **2026-04-26**: 完成 Dashboard 热参数模型 H：新增 `DashboardParams`、Planner/Buff Aimer 热参数快照与单参数 apply，验证范围不包含 TinyMPC Q/R/max_acc 热修改；2026-04-30 后 Buff Aimer 热参链路已按新范围移除。
+- **2026-04-15**: 将隐藏知识目录更名为 `.agent/`，并同步更新仓库内所有元规则与文档引用路径。
+- **2026-04-15**: 将仓库根 `AGENTS.md` 重写为精简的元规则入口文件，仅保留上下文加载顺序、知识路由与收尾同步要求。
+- **2026-04-04**: 完成一次全局架构审计，并沉淀标准链路、调试字段、坐标系、控制指令和通信协议等核心知识。
 
 ---

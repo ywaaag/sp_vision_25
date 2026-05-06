@@ -98,16 +98,26 @@ yaw_kd: 0
 pitch_kp: 0
 pitch_kd: 0
 
+#####-----plotter-----#####
+plotter:
+  host: "127.0.0.1"
+  port: 9870
+
 #####-----planner-----#####
 fire_thresh: 0.0035
 
 max_yaw_acc: 50
-Q_yaw: [9e6, 0]
+Q_yaw: [9e2, 0]
 R_yaw: [1]
 
 max_pitch_acc: 100
 Q_pitch: [9e6, 0]
 R_pitch: [1]
+
+#####-----plotter-----#####
+plotter:
+  host: "127.0.0.1" # PlotJuggler UDP host, change to Windows LAN IP for cross-device debug
+  port: 9870
 
 #####-----buff_detector参数-----#####
 model: "assets/yolo11_buff_int8.xml"
@@ -128,3 +138,9 @@ buff_fyt_detector:
 #####-----buff_aimer参数-----#####
 fire_gap_time: 0.700   # s
 predict_time: 0.120     # s
+
+#####-----dashboard参数-----#####
+dashboard:
+  enabled: false
+  robot_id: "myrobot"
+  mqtt_host: "tcp://127.0.0.1:1883"

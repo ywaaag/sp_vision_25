@@ -6,6 +6,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_BUILD_TYPE Release)
 message(STATUS "--------------------CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}--------------------")
 
+include("${PROJECT_SOURCE_DIR}/cmake/DashboardDeps.cmake")
+
 find_package(OpenCV REQUIRED)
 find_package(fmt REQUIRED)
 find_package(Eigen3 REQUIRED)
@@ -27,11 +29,33 @@ add_subdirectory(tasks/auto_buff)
 add_subdirectory(tasks/auto_buff_fyt)
 add_subdirectory(tasks/omniperception)
 
+add_library(dashboard_params STATIC tools/dashboard_params.cpp)
+target_link_libraries(dashboard_params
+    PUBLIC
+        nlohmann_json::nlohmann_json
+        yaml-cpp
+        auto_aim
+        tools
+)
+
+add_library(dashboard_config STATIC
+    tools/dashboard_config.cpp
+    tools/dashboard_cli.cpp
+)
+target_link_libraries(dashboard_config
+    PUBLIC
+        yaml-cpp
+)
+
 ####################src###################
 add_executable(standard src/standard.cpp)
 add_executable(mt_standard src/mt_standard.cpp)
-add_executable(auto_aim_debug_mpc src/auto_aim_debug_mpc.cpp)
+add_executable(auto_aim_debug_mpc
+    src/auto_aim_debug_mpc.cpp
+    src/auto_aim_debug_dashboard.cpp
+)
 add_executable(auto_aim_delay_tuner src/auto_aim_delay_tuner.cpp)
+add_executable(auto_aim_delay_calibration src/auto_aim_delay_calibration.cpp)
 add_executable(omni_perception_delay_tuner src/omni_perception_delay_tuner.cpp)
 add_executable(sentry_omni_perception_debug_mpc src/sentry_omni_perception_debug_mpc.cpp)
 add_executable(mt_auto_aim_debug src/mt_auto_aim_debug.cpp)
@@ -43,8 +67,13 @@ add_executable(uav_debug src/uav_debug.cpp)
 
 target_link_libraries(standard ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_aim auto_buff tools io)
 target_link_libraries(mt_standard ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_aim auto_buff tools io)
-target_link_libraries(auto_aim_debug_mpc ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_aim auto_buff tools io)
+target_link_libraries(auto_aim_debug_mpc ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_aim auto_buff tools io dashboard_config)
+if(TARGET mqtt_bridge)
+    target_link_libraries(auto_aim_debug_mpc mqtt_bridge dashboard_params)
+    target_compile_definitions(auto_aim_debug_mpc PRIVATE SP_VISION_ENABLE_DASHBOARD_MQTT)
+endif()
 target_link_libraries(auto_aim_delay_tuner ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_aim auto_buff tools io)
+target_link_libraries(auto_aim_delay_calibration ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_aim tools io)
 target_link_libraries(omni_perception_delay_tuner ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_aim auto_buff tools io)
 target_link_libraries(sentry_omni_perception_debug_mpc ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_aim auto_buff tools io)
 target_link_libraries(mt_auto_aim_debug ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_aim auto_buff tools io)
@@ -80,11 +109,16 @@ add_executable(fire_test tests/fire_test.cpp)
 add_executable(detector_video_test tests/detector_video_test.cpp)
 add_executable(gimbal_response_test tests/gimbal_response_test.cpp)
 add_executable(multi_usbcamera_test tests/multi_usbcamera_test.cpp)
+add_executable(outpost_test tests/outpost_test.cpp)
 add_executable(usbcamera_detect_test tests/usbcamera_detect_test.cpp)
 add_executable(usbcamera_test tests/usbcamera_test.cpp)
 add_executable(handeye_test tests/handeye_test.cpp)
 add_executable(dm_test tests/dm_test.cpp)
 add_executable(minimum_vision_system tests/minimum_vision_system.cpp)
+add_executable(dashboard_params_test tests/dashboard_params_test.cpp)
+if(TARGET mqtt_bridge)
+    add_executable(mqtt_bridge_smoke tests/mqtt_bridge_smoke.cpp)
+endif()
 
 target_link_libraries(auto_aim_test ${OpenCV_LIBS} fmt::fmt yaml-cpp tools io auto_aim)
 target_link_libraries(auto_buff_test ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_buff tools io)
@@ -98,11 +132,23 @@ target_link_libraries(fire_test ${OpenCV_LIBS} fmt::fmt tools io)
 target_link_libraries(detector_video_test ${OpenCV_LIBS} fmt::fmt yaml-cpp tools auto_aim)
 target_link_libraries(gimbal_response_test ${OpenCV_LIBS} fmt::fmt yaml-cpp tools io)
 target_link_libraries(multi_usbcamera_test ${OpenCV_LIBS} fmt::fmt tools io)
+target_link_libraries(outpost_test ${OpenCV_LIBS} fmt::fmt yaml-cpp tools io auto_aim)
 target_link_libraries(usbcamera_detect_test ${OpenCV_LIBS} fmt::fmt yaml-cpp tools io auto_aim)
 target_link_libraries(usbcamera_test ${OpenCV_LIBS} fmt::fmt yaml-cpp tools io)
 target_link_libraries(handeye_test ${OpenCV_LIBS} fmt::fmt yaml-cpp tools io auto_aim)
 target_link_libraries(dm_test ${OpenCV_LIBS} fmt::fmt yaml-cpp tools io)
 target_link_libraries(minimum_vision_system ${OpenCV_LIBS} fmt::fmt yaml-cpp tools io auto_aim)
+target_link_libraries(dashboard_params_test dashboard_params fmt::fmt)
+if(TARGET mqtt_bridge)
+    target_link_libraries(mqtt_bridge_smoke
+        mqtt_bridge
+        nlohmann_json::nlohmann_json
+        ${OpenCV_LIBS}
+        fmt::fmt
+        yaml-cpp
+        tools
+    )
+endif()
 
 add_executable(gimbal_test tests/gimbal_test.cpp)
 target_link_libraries(gimbal_test ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_aim tools io)
@@ -114,36 +160,35 @@ add_executable(planner_test_offline tests/planner_test_offline.cpp)
 target_link_libraries(planner_test_offline ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_aim tools io)
 
 # 检查 ROS 环境
-find_package(ament_cmake REQUIRED)
-find_package(rclcpp REQUIRED)
-find_package(std_msgs REQUIRED)
-find_package(rosidl_typesupport_cpp REQUIRED)
-find_package(combat_rm_interfaces REQUIRED)
+find_package(ament_cmake QUIET)
+find_package(rclcpp QUIET)
+find_package(std_msgs QUIET)
+find_package(rosidl_typesupport_cpp QUIET)
+find_package(combat_rm_interfaces QUIET)
+find_package(example_interfaces QUIET)
 # 只有在找到 ROS 环境时才会添加 sentry 和 publish_test
-if(ament_cmake_FOUND AND rclcpp_FOUND AND std_msgs_FOUND AND rosidl_typesupport_cpp_FOUND AND combat_rm_interfaces_FOUND)
-
+if(ament_cmake_FOUND AND rclcpp_FOUND AND std_msgs_FOUND AND rosidl_typesupport_cpp_FOUND AND combat_rm_interfaces_FOUND AND example_interfaces_FOUND)
     add_executable(standard_mpc src/standard_mpc.cpp)
     add_executable(standard_fyt_mpc src/standard_fyt_mpc.cpp)
     target_link_libraries(standard_mpc ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_aim auto_buff tools io)
     target_link_libraries(standard_fyt_mpc ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_aim auto_buff auto_buff_fyt tools io)
 
-
     # 编译 sentry 和 publish_test
-    # add_executable(sentry src/sentry.cpp)
-    # add_executable(sentry_bp src/sentry_bp.cpp)
-    # add_executable(sentry_debug src/sentry_debug.cpp)
-    # add_executable(sentry_multithread src/sentry_multithread.cpp)
-    # add_executable(publish_test tests/publish_test.cpp)
-    # add_executable(subscribe_test tests/subscribe_test.cpp)
-    # add_executable(topic_loop_test tests/topic_loop_test.cpp)
+    add_executable(sentry src/sentry.cpp)
+    add_executable(sentry_bp src/sentry_bp.cpp)
+    add_executable(sentry_debug src/sentry_debug.cpp)
+    add_executable(sentry_multithread src/sentry_multithread.cpp)
+    add_executable(publish_test tests/publish_test.cpp)
+    add_executable(subscribe_test tests/subscribe_test.cpp)
+    add_executable(topic_loop_test tests/topic_loop_test.cpp)
 
-    # target_link_libraries(sentry ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_aim omniperception tools io)
-    # target_link_libraries(sentry_bp ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_aim omniperception tools io)
-    # target_link_libraries(sentry_debug ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_aim omniperception tools io)
-    # target_link_libraries(sentry_multithread ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_aim omniperception tools io)
-    # target_link_libraries(publish_test ${OpenCV_LIBS} fmt::fmt tools io auto_aim)
-    # target_link_libraries(subscribe_test ${OpenCV_LIBS} fmt::fmt tools io)
-    # target_link_libraries(topic_loop_test ${OpenCV_LIBS} fmt::fmt tools io)
+    target_link_libraries(sentry ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_aim omniperception tools io)
+    target_link_libraries(sentry_bp ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_aim omniperception tools io)
+    target_link_libraries(sentry_debug ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_aim omniperception tools io)
+    target_link_libraries(sentry_multithread ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_aim omniperception tools io)
+    target_link_libraries(publish_test ${OpenCV_LIBS} fmt::fmt tools io auto_aim)
+    target_link_libraries(subscribe_test ${OpenCV_LIBS} fmt::fmt tools io)
+    target_link_libraries(topic_loop_test ${OpenCV_LIBS} fmt::fmt tools io)
 else()
     message(STATUS "ROS2 environment not found, skipping ROS2-related code.")
 endif()

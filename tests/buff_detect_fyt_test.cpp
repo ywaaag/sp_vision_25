@@ -73,7 +73,6 @@ int main(int argc, char * argv[])
   auto_buff_fyt::Buff_Detector detector(config_path);
   auto_buff_fyt::Solver solver(config_path);
   auto_buff_fyt::BigTarget target;
-  //auto_buff_fyt::SmallTarget target;
   auto_buff_fyt::Aimer aimer(config_path);
 
   cv::VideoCapture video(video_path);
@@ -126,12 +125,8 @@ int main(int argc, char * argv[])
 
     for (const auto & obj : filtered_objects) {
       const bool is_selected_candidate =
-        std::find_if(
-          filtered_objects.begin(), filtered_objects.end(), [&](const auto & filtered) {
-            return filtered.type == obj.type && filtered.color == obj.color &&
-                   std::abs(filtered.prob - obj.prob) < 1e-3 &&
-                   cv::norm(filtered.pts.bottom_left - obj.pts.bottom_left) < 1.0;
-          }) != filtered_objects.end();
+        selected.has_value() && obj.type == auto_buff_fyt::RuneType::INACTIVATED &&
+        cv::norm(obj.pts.bottom_left - selected->target().points[0]) < 1.0;
       draw_rune_object(img, obj, is_selected_candidate);
     }
 

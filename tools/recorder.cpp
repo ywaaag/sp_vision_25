@@ -51,7 +51,9 @@ void Recorder::save_to_file()
     }
 
     FrameData frame;
-    queue_.pop(frame);  // 从队列中取出帧数据
+    if (!queue_.pop(frame)) {
+      break;
+    }
     if (frame.img.empty()) {
       if (stop_thread_ && queue_.empty()) {
         flush_pending_frame();
