@@ -53,9 +53,8 @@ std::vector<DetectionResult> Perceptron::get_detection_queue()
   std::vector<DetectionResult> result;
   DetectionResult temp;
 
-  // 注意：这里的 pop 不阻塞（假设队列为空时会报错或忽略）
-  while (!detection_queue_.empty()) {
-    detection_queue_.pop(temp);
+  // 注意：这里的 pop 不阻塞
+  while (detection_queue_.try_pop(temp)) {
     result.push_back(std::move(temp));
   }
 

@@ -65,9 +65,18 @@ void MultiThreadDetector::push(cv::Mat img, std::chrono::steady_clock::time_poin
   queue_.push({img.clone(), t, std::move(infer_request)});
 }
 
-std::tuple<std::list<Armor>, std::chrono::steady_clock::time_point> MultiThreadDetector::pop()
+bool MultiThreadDetector::pop(
+  std::list<Armor> & armors,
+  std::chrono::steady_clock::time_point & t)
 {
-  auto [img, t, infer_request] = queue_.pop();
+  std::tuple<cv::Mat, std::chrono::steady_clock::time_point, ov::InferRequest> payload;
+  if (!queue_.pop(payload)) {
+    return false;
+  }
+
+  auto img = std::move(std::get<0>(payload));
+  t = std::get<1>(payload);
+  auto infer_request = std::move(std::get<2>(payload));
   infer_request.wait();
 
   // postprocess
@@ -77,15 +86,23 @@ std::tuple<std::list<Armor>, std::chrono::steady_clock::time_point> MultiThreadD
   auto x_scale = static_cast<double>(640) / img.rows;
   auto y_scale = static_cast<double>(640) / img.cols;
   auto scale = std::min(x_scale, y_scale);
-  auto armors = yolo_.postprocess(scale, output, img, 0);  //暂不支持ROI
-
-  return {std::move(armors), t};
+  armors = yolo_.postprocess(scale, output, img, 0);  //暂不支持ROI
+  return true;
 }
 
-std::tuple<cv::Mat, std::list<Armor>, std::chrono::steady_clock::time_point>
-MultiThreadDetector::debug_pop()
+bool MultiThreadDetector::debug_pop(
+  cv::Mat & img,
+  std::list<Armor> & armors,
+  std::chrono::steady_clock::time_point & t)
 {
-  auto [img, t, infer_request] = queue_.pop();
+  std::tuple<cv::Mat, std::chrono::steady_clock::time_point, ov::InferRequest> payload;
+  if (!queue_.pop(payload)) {
+    return false;
+  }
+
+  img = std::move(std::get<0>(payload));
+  t = std::get<1>(payload);
+  auto infer_request = std::move(std::get<2>(payload));
   infer_request.wait();
 
   // postprocess
@@ -95,9 +112,8 @@ MultiThreadDetector::debug_pop()
   auto x_scale = static_cast<double>(640) / img.rows;
   auto y_scale = static_cast<double>(640) / img.cols;
   auto scale = std::min(x_scale, y_scale);
-  auto armors = yolo_.postprocess(scale, output, img, 0);  //暂不支持ROI
-
-  return {img, std::move(armors), t};
+  armors = yolo_.postprocess(scale, output, img, 0);  //暂不支持ROI
+  return true;
 }
 
 }  // namespace multithread

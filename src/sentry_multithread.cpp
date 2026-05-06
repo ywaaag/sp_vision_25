@@ -35,7 +35,6 @@ const std::string keys =
 int main(int argc, char * argv[])
 {
   tools::Exiter exiter;
-  tools::Plotter plotter;
   tools::Recorder recorder;
 
   cv::CommandLineParser cli(argc, argv, keys);
@@ -44,6 +43,7 @@ int main(int argc, char * argv[])
     return 0;
   }
   auto config_path = cli.get<std::string>(0);
+  auto plotter = tools::Plotter::from_config(config_path);
 
   io::ROS2 ros2;
   io::CBoard cboard(config_path);

@@ -84,7 +84,11 @@ cv::Mat USBCamera::read()
 void USBCamera::read(cv::Mat & img, std::chrono::steady_clock::time_point & timestamp)
 {
   CameraData data;
-  queue_.pop(data);
+  if (!queue_.pop(data)) {
+    img = cv::Mat();
+    timestamp = std::chrono::steady_clock::time_point{};
+    return;
+  }
 
   img = data.img;
   timestamp = data.timestamp;

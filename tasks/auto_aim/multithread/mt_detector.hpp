@@ -22,9 +22,14 @@ public:
 
   void push(cv::Mat img, std::chrono::steady_clock::time_point t);
 
-  std::tuple<std::list<Armor>, std::chrono::steady_clock::time_point> pop();  //暂时不支持yolov8
+  bool pop(
+    std::list<Armor> & armors,
+    std::chrono::steady_clock::time_point & t);  //暂时不支持yolov8
 
-  std::tuple<cv::Mat, std::list<Armor>, std::chrono::steady_clock::time_point> debug_pop();
+  bool debug_pop(
+    cv::Mat & img,
+    std::list<Armor> & armors,
+    std::chrono::steady_clock::time_point & t);
 
 private:
   ov::Core core_;

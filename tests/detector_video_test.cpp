@@ -32,7 +32,7 @@ int main(int argc, char * argv[])
   auto use_tradition = cli.get<bool>("tradition");
 
   tools::Exiter exiter;
-  tools::Plotter plotter;
+  auto plotter = tools::Plotter::from_config(config_path);
 
   cv::VideoCapture video(video_path);
 

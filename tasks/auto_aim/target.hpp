@@ -2,6 +2,7 @@
 #define AUTO_AIM__TARGET_HPP
 
 #include <Eigen/Dense>
+#include <array>
 #include <chrono>
 #include <optional>
 #include <queue>
@@ -46,17 +47,29 @@ public:
   bool checkinit();
 
 private:
+  static constexpr double OUTPOST_ARMOR_HEIGHT_STEP = 0.1;
+  static constexpr int OUTPOST_ARMOR_COUNT = 3;
+
   int armor_num_;
   int switch_count_;
   int update_count_;
 
   bool is_switch_, is_converged_;
+  bool outpost_height_ready_;
+  int outpost_observed_mask_;
+  std::array<double, OUTPOST_ARMOR_COUNT> outpost_height_sums_;
+  std::array<int, OUTPOST_ARMOR_COUNT> outpost_height_counts_;
+  std::array<int, OUTPOST_ARMOR_COUNT> outpost_height_order_;
 
   tools::ExtendedKalmanFilter ekf_;
   std::chrono::steady_clock::time_point t_;
 
   void update_ypda(const Armor & armor, int id);  // yaw pitch distance angle
 
+  bool is_outpost_target() const;
+  bool use_outpost_staggered_height_model() const;
+  void record_outpost_observation(int id, const Armor & armor);
+  double outpost_height_offset(int id) const;
   Eigen::Vector3d h_armor_xyz(const Eigen::VectorXd & x, int id) const;
   Eigen::MatrixXd h_jacobian(const Eigen::VectorXd & x, int id) const;
 };
