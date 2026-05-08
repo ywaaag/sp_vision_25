@@ -2,6 +2,8 @@
 
 #include <yaml-cpp/yaml.h>
 
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 #include "tools/logger.hpp"
@@ -24,6 +26,42 @@ const std::vector<cv::Point3f> SMALL_ARMOR_POINTS{
   {0, -SMALL_ARMOR_WIDTH / 2, -LIGHTBAR_LENGTH / 2},
   {0, SMALL_ARMOR_WIDTH / 2, -LIGHTBAR_LENGTH / 2}};
 
+std::vector<cv::Point3f> load_sentry_object_points(const YAML::Node & yaml)
+{
+  const auto sentry = yaml["sentry_object_points"];
+  if (!sentry) {
+    return {};
+  }
+
+  auto unit_scale = 1.0;
+  const auto unit = sentry["unit"] ? sentry["unit"].as<std::string>() : "m";
+  if (unit == "mm") {
+    unit_scale = 1e-3;
+  } else if (unit != "m") {
+    throw std::runtime_error("sentry_object_points.unit must be m or mm");
+  }
+
+  const auto points = sentry["points"];
+  if (!points) {
+    throw std::runtime_error("sentry_object_points.points is required");
+  }
+
+  std::vector<cv::Point3f> object_points;
+  object_points.reserve(8);
+  for (int i = 0; i < 8; ++i) {
+    const auto name = "p" + std::to_string(i);
+    const auto point = points[name];
+    if (!point || !point.IsSequence() || point.size() != 3) {
+      throw std::runtime_error("sentry_object_points.points." + name + " must have 3 values");
+    }
+    object_points.emplace_back(
+      static_cast<float>(point[0].as<double>() * unit_scale),
+      static_cast<float>(point[1].as<double>() * unit_scale),
+      static_cast<float>(point[2].as<double>() * unit_scale));
+  }
+  return object_points;
+}
+
 Solver::Solver(const std::string & config_path) : R_gimbal2world_(Eigen::Matrix3d::Identity())
 {
   auto yaml = YAML::LoadFile(config_path);
@@ -41,6 +79,16 @@ Solver::Solver(const std::string & config_path) : R_gimbal2world_(Eigen::Matrix3
   Eigen::Matrix<double, 1, 5> distort_coeffs(distort_coeffs_data.data());
   cv::eigen2cv(camera_matrix, camera_matrix_);
   cv::eigen2cv(distort_coeffs, distort_coeffs_);
+
+  sentry_object_points_ = load_sentry_object_points(yaml);
+  R_sentry_pattern2armor_ = Eigen::Matrix3d::Identity();
+  if (yaml["R_sentry_pattern2armor"]) {
+    const auto data = yaml["R_sentry_pattern2armor"].as<std::vector<double>>();
+    if (data.size() != 9) {
+      throw std::runtime_error("R_sentry_pattern2armor must contain 9 values");
+    }
+    R_sentry_pattern2armor_ = Eigen::Matrix<double, 3, 3, Eigen::RowMajor>(data.data());
+  }
 }
 
 Eigen::Matrix3d Solver::R_gimbal2world() const { return R_gimbal2world_; }
@@ -54,6 +102,11 @@ void Solver::set_R_gimbal2world(const Eigen::Quaterniond & q)
 //solvePnP（获得姿态）
 void Solver::solve(Armor & armor) const
 {
+  if (armor.name == ArmorName::sentry && armor.has_sentry_keypoints()) {
+    solve_sentry(armor);
+    return;
+  }
+
   const auto & object_points =
     (armor.type == ArmorType::big) ? BIG_ARMOR_POINTS : SMALL_ARMOR_POINTS;
 
@@ -85,6 +138,35 @@ void Solver::solve(Armor & armor) const
   if (is_balance) return;
 
   optimize_yaw(armor);
+}
+
+void Solver::solve_sentry(Armor & armor) const
+{
+  if (sentry_object_points_.size() != 8) {
+    throw std::runtime_error("sentry_object_points must contain p0 through p7 for sentry PnP");
+  }
+
+  cv::Vec3d rvec, tvec;
+  cv::solvePnP(
+    sentry_object_points_, armor.sentry_keypoints, camera_matrix_, distort_coeffs_, rvec, tvec,
+    false, cv::SOLVEPNP_ITERATIVE);
+
+  Eigen::Vector3d xyz_in_camera;
+  cv::cv2eigen(tvec, xyz_in_camera);
+  armor.xyz_in_gimbal = R_camera2gimbal_ * xyz_in_camera + t_camera2gimbal_;
+  armor.xyz_in_world = R_gimbal2world_ * armor.xyz_in_gimbal;
+
+  cv::Mat rmat;
+  cv::Rodrigues(rvec, rmat);
+  Eigen::Matrix3d R_pattern2camera;
+  cv::cv2eigen(rmat, R_pattern2camera);
+  Eigen::Matrix3d R_pattern2gimbal = R_camera2gimbal_ * R_pattern2camera;
+  Eigen::Matrix3d R_armor2gimbal = R_pattern2gimbal * R_sentry_pattern2armor_.transpose();
+  Eigen::Matrix3d R_armor2world = R_gimbal2world_ * R_armor2gimbal;
+  armor.ypr_in_gimbal = tools::eulers(R_armor2gimbal, 2, 1, 0);
+  armor.ypr_in_world = tools::eulers(R_armor2world, 2, 1, 0);
+  armor.ypd_in_world = tools::xyz2ypd(armor.xyz_in_world);
+  armor.yaw_raw = armor.ypr_in_world[0];
 }
 
 std::vector<cv::Point2f> Solver::reproject_armor(

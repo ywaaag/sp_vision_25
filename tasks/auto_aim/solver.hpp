@@ -30,10 +30,14 @@ public:
 private:
   cv::Mat camera_matrix_;
   cv::Mat distort_coeffs_;
+  std::vector<cv::Point3f> sentry_object_points_;
   Eigen::Matrix3d R_gimbal2imubody_;
   Eigen::Matrix3d R_camera2gimbal_;
+  Eigen::Matrix3d R_sentry_pattern2armor_;
   Eigen::Vector3d t_camera2gimbal_;
   Eigen::Matrix3d R_gimbal2world_;
+
+  void solve_sentry(Armor & armor) const;
 
   void optimize_yaw(Armor & armor) const;
 

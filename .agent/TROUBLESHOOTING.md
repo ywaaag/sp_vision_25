@@ -37,6 +37,16 @@
    - 解决方案: 检查 include 目录设置
    - 验证命令: `cmake -B build --trace`
 
+4. **Dashboard 可选依赖误触发失败**:
+   - 错误现象: 宿主机缺少 OpenSSL 开发包时，`find_package(PahoMqttCpp QUIET)` 仍通过 Paho config 触发 `Could NOT find OpenSSL`，导致 CMake configure 失败。
+   - 解决方案: 先 `find_package(OpenSSL QUIET)`，只有 OpenSSL 存在时再探测 `PahoMqttCpp`；无依赖时应跳过 `mqtt_bridge`，不影响非 MQTT 目标。
+   - 验证命令: `cmake -B build -DCMAKE_BUILD_TYPE=Release`
+
+5. **clang-format 配置读取失败**:
+   - 错误现象: `clang-format -i ...` 报 `.clang-format:21:1: error: unknown key '...'`。
+   - 解决方案: 当前仓库 `.clang-format` 含 YAML 结束符 `...`，部分 clang-format 版本不能解析；格式化前需先修正配置或使用兼容版本。
+   - 验证命令: `clang-format -i <file>`
+
 ## 运行时问题排查
 
 ### 性能问题诊断

@@ -34,7 +34,7 @@ const std::string keys =
   "{video-loop     |                        | 视频结束后循环读取}"
   "{max-frames     | 0                      | 最大处理帧数，0 表示直到视频结束}"
   "{bullet-speed   | 22.0                   | 规划使用的固定弹速 m/s}"
-  "{@config-path   | configs/standard3.yaml | 位置参数，yaml配置文件路径}";
+  "{@config-path   | configs/sentry_pose.yaml | 位置参数，yaml配置文件路径}";
 
 std::vector<std::string> normalize_cli_args(int argc, char * argv[])
 {

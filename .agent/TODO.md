@@ -26,6 +26,7 @@
 - 2026-05-01 MQTT Dashboard PR review 修复：`MqttBridge::start()` 失败路径补齐断连清理，Dashboard 参数 schema/current 改用实际启动配置路径。
 - 2026-05-01 MQTT Dashboard 文档收口：`docs/dashboard.md` 成为最终版维护入口，原运行边界、分仓、broker、build、changelog 和协议细节已合并精简。
 - 2026-05-01 新增无硬件 Dashboard telemetry smoke 分支：通过独立 `auto_aim_dashboard_hardwareless_test` 读取视频验证算法输出和 MQTT telemetry，不接入生产入口。
+- 2026-05-06 新增 Sentry 8 点 YOLO-Pose hardwareless 验证链路：`configs/sentry_pose.yaml` 使用 `YOLOSentryPose` + `Solver` 8 点 PnP 分支，复用现有 `Tracker / Target / Planner` 接口，生产入口保持不变。
 - 当前没有明确进行中的功能任务；本文件现阶段主要承担“维护面板”和“回填入口”的作用。
 - 历史任务细节已归档到下文，不再在顶部重复展开。
 
@@ -78,6 +79,7 @@
 - **2026-05-01**: 修复 Dashboard PR review：MQTT start 失败会 best-effort 关闭连接，DashboardParams 不再依赖硬编码 `configs/standard3.yaml`，前端分仓文档去除本机绝对路径。
 - **2026-05-01**: 精简 Dashboard 文档：新增 `docs/dashboard.md` 最终版，删除重复的运行、broker、build、分仓和 changelog 文档，保留 `docs/dashboard_mqtt_protocol.md` 作为兼容跳转。
 - **2026-05-01**: 新增独立无硬件 Dashboard telemetry smoke 目标：读取 `assets/demo/demo.avi` 验证自瞄算法输出并可选发布 MQTT telemetry，不恢复生产入口 mock runtime。
+- **2026-05-06**: 新增 Sentry 8 点 YOLO-Pose OpenVINO detector 与 PnP 分支：OpenVINO 资产进入 `assets/`，`configs/sentry_pose.yaml` 从 sentry_pnp_pose 配置迁入真实 `p0 -> p7` object points，hardwareless 测试默认切到新配置。
 - **2026-04-26**: 完成 Dashboard 热参数模型 H：新增 `DashboardParams`、Planner/Buff Aimer 热参数快照与单参数 apply，验证范围不包含 TinyMPC Q/R/max_acc 热修改；2026-04-30 后 Buff Aimer 热参链路已按新范围移除。
 - **2026-04-15**: 将隐藏知识目录更名为 `.agent/`，并同步更新仓库内所有元规则与文档引用路径。
 - **2026-04-15**: 将仓库根 `AGENTS.md` 重写为精简的元规则入口文件，仅保留上下文加载顺序、知识路由与收尾同步要求。

@@ -11,7 +11,7 @@ if [[ "$#" -eq 0 ]]; then
     --video-source assets/demo/demo.avi \
     --video-loop \
     --max-frames 300 \
-    configs/standard3.yaml
+    configs/sentry_pose.yaml
 fi
 
 docker compose -f docker-compose.dev.yml run --rm sp-vision-dev "$@"

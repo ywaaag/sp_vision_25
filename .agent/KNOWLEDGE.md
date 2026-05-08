@@ -661,7 +661,15 @@ auto buff_plan = buff_aimer.mpc_aim(target_copy, t, gs, true);
 - **线程安全接口**：`auto_aim::Planner::get_hot_params()` / `apply_hot_param()` 与 `auto_buff::Aimer::get_hot_params()` / `apply_hot_param()` 使用 mutex + RAII；offset 对外为 degree，内部仍存 rad。
 - **边界**：Dashboard 热调参不读取 MQTT，不依赖 Paho，不热改 TinyMPC `Q/R/max_acc`，不重建 solver。
 
-### 9.4 构建与运行命令
+### 9.4 Sentry 8点 YOLO-Pose PnP (`configs/sentry_pose.yaml`)
+- **验证入口**：`auto_aim_dashboard_hardwareless_test` 默认使用 `configs/sentry_pose.yaml`，不接入生产 `standard_mpc`。
+- **检测器**：`yolo_name: sentry_pose` 选择 `YOLOSentryPose`，读取 OpenVINO `assets/sentry_pose_v001.xml`，输出 bbox、score 和 8 个固定关键点。
+- **关键点顺序**：C++ 侧严格使用模型输出的 `p0 -> p7` 顺序，不排序、不重排；低于 `sentry_keypoint_conf` 的 detection 会被丢弃。
+- **PnP 分支**：`Solver::solve(Armor&)` 遇到 `ArmorName::sentry` 且 `sentry_keypoints.size() == 8` 时，使用 `sentry_object_points.points.p0...p7` 和 `cv::SOLVEPNP_ITERATIVE` 做 8 点 PnP；其他目标继续使用旧 4 点装甲板 `SOLVEPNP_IPPE`。
+- **坐标映射**：`sentry_object_points` 是图案平面坐标，默认约定为 `x` 向右、`y` 向下、`z` 为图案平面法向；PnP 后通过 `R_sentry_pattern2armor` 映射到旧 Armor 坐标（`X` 为装甲板法向、`Y` 向左、`Z` 向上），再写入 yaw/pitch/roll。
+- **接口兼容**：8 点 PnP 结果仍写回 `armor.xyz_in_gimbal`、`armor.xyz_in_world`、`armor.ypr_in_gimbal`、`armor.ypr_in_world`，因此后续 `Tracker / Target / Planner` 不需要改接口。
+
+### 9.5 构建与运行命令
 ```bash
 # 构建发布版本
 cmake -B build -DCMAKE_BUILD_TYPE=Release && make -C build/ -j$(nproc)

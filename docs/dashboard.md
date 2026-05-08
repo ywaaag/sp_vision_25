@@ -244,7 +244,7 @@ cd /home/ywag/sp_vision_dashboard_panel
   --video-source assets/demo/demo.avi \
   --video-loop \
   --max-frames 300 \
-  configs/standard3.yaml
+  configs/sentry_pose.yaml
 ```
 
 容器运行等价命令：

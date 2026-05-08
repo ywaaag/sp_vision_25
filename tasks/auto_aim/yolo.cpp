@@ -3,6 +3,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include "yolos/yolo11.hpp"
+#include "yolos/yolo_sentry_pose.hpp"
 #include "yolos/yolov5.hpp"
 #include "yolos/yolov8.hpp"
 
@@ -23,6 +24,10 @@ YOLO::YOLO(const std::string & config_path, bool debug)
 
   else if (yolo_name == "yolov5") {
     yolo_ = std::make_unique<YOLOV5>(config_path, debug);
+  }
+
+  else if (yolo_name == "sentry_pose") {
+    yolo_ = std::make_unique<YOLOSentryPose>(config_path, debug);
   }
 
   else {

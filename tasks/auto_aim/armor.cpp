@@ -6,6 +6,11 @@
 
 namespace auto_aim
 {
+bool Armor::has_sentry_keypoints() const
+{
+  return sentry_keypoints.size() == 8 && sentry_keypoint_confidences.size() == 8;
+}
+
 Lightbar::Lightbar(const cv::RotatedRect & rotated_rect, std::size_t id)
 : id(id), rotated_rect(rotated_rect)
 {

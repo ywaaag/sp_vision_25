@@ -84,6 +84,8 @@ struct Armor
   cv::Point2f center;       // 不是对角线交点，不能作为实际中心！
   cv::Point2f center_norm;  // 归一化坐标
   std::vector<cv::Point2f> points;
+  std::vector<cv::Point2f> sentry_keypoints;
+  std::vector<float> sentry_keypoint_confidences;
 
   double ratio;              // 两灯条的中点连线与长灯条的长度之比
   double side_ratio;         // 长灯条与短灯条的长度之比
@@ -105,6 +107,8 @@ struct Armor
   Eigen::Vector3d ypd_in_world;   // 球坐标系
 
   double yaw_raw;  // rad
+
+  bool has_sentry_keypoints() const;
 
   Armor(const Lightbar & left, const Lightbar & right);
   Armor(
