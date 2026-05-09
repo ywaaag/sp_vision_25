@@ -11,6 +11,7 @@
 
 #include "io/camera.hpp"
 #include "io/gimbal/gimbal.hpp"
+#include "io/ros2/ros2.hpp"
 #include "io/usbcamera/usbcamera.hpp"
 #include "tasks/auto_aim/planner/planner.hpp"
 #include "tasks/auto_aim/solver.hpp"
@@ -186,6 +187,7 @@ int main(int argc, char * argv[])
     tools::read<std::string>(yaml, "enemy_color") == "red" ? auto_aim::Color::red : auto_aim::Color::blue;
 
   io::Gimbal gimbal(config_path);
+  io::ROS2 ros2;
   io::USBCamera usb_left_camera(USB_LEFT_DEVICE, config_path);
   io::USBCamera usb_right_camera(USB_RIGHT_DEVICE, config_path);
   // Match `usbcamera_test` startup more closely: let the USB cameras settle before starting HikRobot.
@@ -278,6 +280,28 @@ int main(int argc, char * argv[])
       plotter.plot(data);
 
       std::this_thread::sleep_for(10ms);
+    }
+  });
+
+  auto ros_thread = std::thread([&]() {
+    while (!quit) {
+      ros2.publish(gimbal.game_status());
+      ros2.publish(gimbal.event_data());
+      ros2.publish(gimbal.robot_status());
+      ros2.publish(gimbal.hurt_data());
+      ros2.publish(gimbal.sentry_info());
+      ros2.publish(gimbal.rfid_status());
+      ros2.publish(gimbal.robot_pos());
+      ros2.publish(gimbal.ground_robot_pos());
+      ros2.publish(gimbal.game_robot_hp());
+      auto gs = gimbal.state();
+      ros2.publish(gs.yaw, gs.pitch, gs.yaw_diff);
+
+      ros2.spin_some();
+
+      gimbal.send(
+        0, ros2.getChassisStatus(), ros2.getSentryStatus(), ros2.getCmdVelX(), ros2.getCmdVelY());
+      std::this_thread::sleep_for(20ms);
     }
   });
 
@@ -486,6 +510,7 @@ int main(int argc, char * argv[])
   }
 
   quit = true;
+  if (ros_thread.joinable()) ros_thread.join();
   if (usb_thread.joinable()) usb_thread.join();
   if (plan_thread.joinable()) plan_thread.join();
   gimbal.send(false, false, 0, 0, 0, 0, 0, 0);
