@@ -10,17 +10,12 @@ int main(int argc, char ** argv)
   tools::Exiter exiter;
   io::ROS2 ros2;
 
-  int i = 0;
   while (!exiter.exit()) {
-    auto x = ros2.subscribe_enemy_status();
-    // tools::logger()->info("invincible enemy ids size is{}", x.size());
-    for (const auto & id : x) {
-      tools::logger()->info("id:{}", id);
-    }
-    // i++;
-
+    ros2.spin_some();
+    tools::logger()->info(
+      "chassis_status={}, sentry_status={}, cmd_vel=({}, {}, {})", ros2.getChassisStatus(),
+      ros2.getSentryStatus(), ros2.getCmdVelX(), ros2.getCmdVelY(), ros2.getCmdVelZ());
     std::this_thread::sleep_for(std::chrono::microseconds(500));
-    // if (i > 1000) break;
   }
   return 0;
 }

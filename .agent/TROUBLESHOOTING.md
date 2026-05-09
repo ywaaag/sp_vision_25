@@ -37,6 +37,12 @@
    - 解决方案: 检查 include 目录设置
    - 验证命令: `cmake -B build --trace`
 
+4. **ROS2 接口漂移 / 旧话题依赖失效**:
+   - 错误现象: `src/sentry*.cpp` 或 `tests/*` 报 `io::ROS2` 没有 `subscribe_enemy_status`，或 `ros2.publish(Eigen::Vector4d&)` 无匹配重载。
+   - 原因特征: 当前 `io::ROS2` 只保留了裁判系统发布和 `cmd_*` 订阅接口，而旧代码还依赖 `sp_msgs` 的 `enemy_status` / `autoaim_target` 链路；当前环境只有 `combat_rm_interfaces`，没有安装 `sp_msgs`。
+   - 解决方案: 优先把调用点改到现有 `io::ROS2` API，移除失效的 `sp_msgs` 订阅/发布路径，不要直接把旧接口补回。
+   - 验证命令: `make -C build -j2`
+
 ## 运行时问题排查
 
 ### 性能问题诊断
@@ -93,6 +99,12 @@
      # 检查通信日志
      tail -f logs/*.screenlog | grep -E "send|recv"
      ```
+
+4. **无桌面环境下 `imshow` 崩溃**:
+   - 错误现象: 启动 `./build/auto_aim_debug_mpc` 或 `./build/sentry_omni_perception_debug_mpc` 后先看到 `XOpenDisplay Fail`，随后抛出 `Can't initialize GTK backend in function 'cvInitSystem'`。
+   - 原因特征: 进程运行在无图形桌面、X11 不可达，或 `DISPLAY` 虽存在但当前用户无法连接，`cv::imshow` 第一次调用时会直接抛 `cv::Exception`；另外部分入口的 YOLO debug 绘制也会在内部触发 `imshow`。
+   - 解决方案: `auto_aim_debug_mpc` 运行时可加 `--headless=true`，`sentry_omni_perception_debug_mpc` 默认不要加 `--display`；在已支持自动降级的版本里，首次 GUI 初始化失败后会自动关闭显示窗口，仅保留 Plotter/Dashboard/控制链路。
+   - 验证命令: `./build/auto_aim_debug_mpc --headless=true`
 
 ## 标定问题排查
 

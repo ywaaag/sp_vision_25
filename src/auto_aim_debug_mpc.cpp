@@ -188,11 +188,16 @@ int main(int argc, char * argv[])
     }
 
     if (!headless) {
-      tools::draw_text(img, fmt::format("imu delay {:.2f} ms", imu_delay_ms), cv::Point(30, 40));
-      cv::resize(img, img, {}, 0.5, 0.5);
-      cv::imshow("reprojection", img);
-      auto key = cv::waitKey(1);
-      if (key == 'q') break;
+      try {
+        tools::draw_text(img, fmt::format("imu delay {:.2f} ms", imu_delay_ms), cv::Point(30, 40));
+        cv::resize(img, img, {}, 0.5, 0.5);
+        cv::imshow("reprojection", img);
+        auto key = cv::waitKey(1);
+        if (key == 'q') break;
+      } catch (const cv::Exception & e) {
+        tools::logger()->warn("OpenCV GUI unavailable, switch to headless mode: {}", e.what());
+        headless = true;
+      }
     }
   }
 

@@ -175,7 +175,7 @@ int main(int argc, char * argv[])
 
   cv::CommandLineParser cli(argc, argv, keys);
   auto config_path = cli.get<std::string>(0);
-  const bool display = cli.has("display");
+  bool display = cli.has("display");
   if (cli.has("help") || config_path.empty()) {
     cli.printMessage();
     return 0;
@@ -192,7 +192,7 @@ int main(int argc, char * argv[])
   std::this_thread::sleep_for(USB_STARTUP_SETTLE);
   io::Camera camera(config_path);
 
-  auto_aim::YOLO yolo(config_path, true);
+  auto_aim::YOLO yolo(config_path, display);
   auto_aim::YOLO usb_yolo(config_path, false);
 
   auto_aim::Solver main_solver(config_path);
@@ -424,59 +424,64 @@ int main(int argc, char * argv[])
       {10, 30}, {255, 255, 255});
 
     if (display) {
-      if (current_usb_result.ready) {
-        if (!current_usb_result.left_img.empty()) {
-          auto usb_left_preview = current_usb_result.left_img.clone();
-          for (const auto & armor : current_usb_result.left_armors) {
-            tools::draw_points(usb_left_preview, armor.points, {0, 255, 0});
+      try {
+        if (current_usb_result.ready) {
+          if (!current_usb_result.left_img.empty()) {
+            auto usb_left_preview = current_usb_result.left_img.clone();
+            for (const auto & armor : current_usb_result.left_armors) {
+              tools::draw_points(usb_left_preview, armor.points, {0, 255, 0});
+            }
+            if (
+              current_usb_result.candidate.has_value() &&
+              current_usb_result.candidate->source == TargetSource::usb_left)
+            {
+              tools::draw_points(
+                usb_left_preview, current_usb_result.candidate->armor.points, {0, 0, 255});
+            }
+            tools::draw_text(
+              usb_left_preview,
+              fmt::format(
+                "[usb_left{}] armors:{}",
+                target_command.source == TargetSource::usb_left ? "*" : "",
+                current_usb_result.left_armors.size()),
+              {10, 30}, {255, 255, 255});
+            cv::resize(usb_left_preview, usb_left_preview, {}, 0.5, 0.5);
+            cv::imshow("usb_left", usb_left_preview);
           }
-          if (
-            current_usb_result.candidate.has_value() &&
-            current_usb_result.candidate->source == TargetSource::usb_left)
-          {
-            tools::draw_points(
-              usb_left_preview, current_usb_result.candidate->armor.points, {0, 0, 255});
+
+          if (!current_usb_result.right_img.empty()) {
+            auto usb_right_preview = current_usb_result.right_img.clone();
+            for (const auto & armor : current_usb_result.right_armors) {
+              tools::draw_points(usb_right_preview, armor.points, {0, 255, 0});
+            }
+            if (
+              current_usb_result.candidate.has_value() &&
+              current_usb_result.candidate->source == TargetSource::usb_right)
+            {
+              tools::draw_points(
+                usb_right_preview, current_usb_result.candidate->armor.points, {0, 0, 255});
+            }
+            tools::draw_text(
+              usb_right_preview,
+              fmt::format(
+                "[usb_right{}] armors:{}",
+                target_command.source == TargetSource::usb_right ? "*" : "",
+                current_usb_result.right_armors.size()),
+              {10, 30}, {255, 255, 255});
+            cv::resize(usb_right_preview, usb_right_preview, {}, 0.5, 0.5);
+            cv::imshow("usb_right", usb_right_preview);
           }
-          tools::draw_text(
-            usb_left_preview,
-            fmt::format(
-              "[usb_left{}] armors:{}",
-              target_command.source == TargetSource::usb_left ? "*" : "",
-              current_usb_result.left_armors.size()),
-            {10, 30}, {255, 255, 255});
-          cv::resize(usb_left_preview, usb_left_preview, {}, 0.5, 0.5);
-          cv::imshow("usb_left", usb_left_preview);
         }
 
-        if (!current_usb_result.right_img.empty()) {
-          auto usb_right_preview = current_usb_result.right_img.clone();
-          for (const auto & armor : current_usb_result.right_armors) {
-            tools::draw_points(usb_right_preview, armor.points, {0, 255, 0});
-          }
-          if (
-            current_usb_result.candidate.has_value() &&
-            current_usb_result.candidate->source == TargetSource::usb_right)
-          {
-            tools::draw_points(
-              usb_right_preview, current_usb_result.candidate->armor.points, {0, 0, 255});
-          }
-          tools::draw_text(
-            usb_right_preview,
-            fmt::format(
-              "[usb_right{}] armors:{}",
-              target_command.source == TargetSource::usb_right ? "*" : "",
-              current_usb_result.right_armors.size()),
-            {10, 30}, {255, 255, 255});
-          cv::resize(usb_right_preview, usb_right_preview, {}, 0.5, 0.5);
-          cv::imshow("usb_right", usb_right_preview);
-        }
+        auto main_preview = img.clone();
+        cv::resize(main_preview, main_preview, {}, 0.5, 0.5);
+        cv::imshow("reprojection", main_preview);
+        auto key = cv::waitKey(1);
+        if (key == 'q') break;
+      } catch (const cv::Exception & e) {
+        tools::logger()->warn("OpenCV GUI unavailable, disable display windows: {}", e.what());
+        display = false;
       }
-
-      auto main_preview = img.clone();
-      cv::resize(main_preview, main_preview, {}, 0.5, 0.5);
-      cv::imshow("reprojection", main_preview);
-      auto key = cv::waitKey(1);
-      if (key == 'q') break;
     }
   }
 
