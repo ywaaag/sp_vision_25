@@ -210,6 +210,7 @@ int main(int argc, char * argv[])
   target_queue.push(TargetCommand{});
 
   std::atomic<bool> quit = false;
+  std::atomic<bool> main_camera_has_target = false;
   std::mutex usb_result_mutex;
   UsbThreadResult usb_result;
 
@@ -325,6 +326,14 @@ int main(int argc, char * argv[])
       UsbThreadResult next_usb_result;
       next_usb_result.left_img = usb_left_img;
       next_usb_result.right_img = usb_right_img;
+      if (main_camera_has_target.load()) {
+        next_usb_result.ready = true;
+        std::lock_guard<std::mutex> lock(usb_result_mutex);
+        usb_result = std::move(next_usb_result);
+        std::this_thread::sleep_for(10ms);
+        continue;
+      }
+
       next_usb_result.left_armors =
         filter_enemy_armors(usb_yolo.detect(usb_left_img), enemy_color);
       next_usb_result.right_armors =
@@ -370,6 +379,7 @@ int main(int argc, char * argv[])
 
     main_solver.set_R_gimbal2world(q);
     auto main_armors = yolo.detect(img);
+    main_camera_has_target = !main_armors.empty();
     auto main_targets = main_tracker.track(main_armors, t);
 
     UsbThreadResult current_usb_result;
