@@ -84,7 +84,7 @@ std::list<Target> Tracker::track(
     target_.name != ArmorName::outpost &&
     std::accumulate(
       target_.ekf().recent_nis_failures.begin(), target_.ekf().recent_nis_failures.end(), 0) >=
-    (0.4 * target_.ekf().window_size)) {
+      (0.4 * target_.ekf().window_size)) {
     tools::logger()->debug("[Target] Bad Converge Found!");
     state_ = "lost";
     return {};
