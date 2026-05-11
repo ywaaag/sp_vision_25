@@ -56,27 +56,7 @@ void Solver::solve(Armor & armor) const
 {
   const auto & object_points =
     (armor.type == ArmorType::big) ? BIG_ARMOR_POINTS : SMALL_ARMOR_POINTS;
-
-  cv::Vec3d rvec, tvec;
-  cv::solvePnP(
-    object_points, armor.points, camera_matrix_, distort_coeffs_, rvec, tvec, false,
-    cv::SOLVEPNP_IPPE);
-
-  Eigen::Vector3d xyz_in_camera;
-  cv::cv2eigen(tvec, xyz_in_camera);
-  armor.xyz_in_gimbal = R_camera2gimbal_ * xyz_in_camera + t_camera2gimbal_;
-  armor.xyz_in_world = R_gimbal2world_ * armor.xyz_in_gimbal;
-
-  cv::Mat rmat;
-  cv::Rodrigues(rvec, rmat);
-  Eigen::Matrix3d R_armor2camera;
-  cv::cv2eigen(rmat, R_armor2camera);
-  Eigen::Matrix3d R_armor2gimbal = R_camera2gimbal_ * R_armor2camera;
-  Eigen::Matrix3d R_armor2world = R_gimbal2world_ * R_armor2gimbal;
-  armor.ypr_in_gimbal = tools::eulers(R_armor2gimbal, 2, 1, 0);
-  armor.ypr_in_world = tools::eulers(R_armor2world, 2, 1, 0);
-
-  armor.ypd_in_world = tools::xyz2ypd(armor.xyz_in_world);
+  solve_ippe(armor, object_points);
 
   // 平衡不做yaw优化，因为pitch假设不成立
   auto is_balance = (armor.type == ArmorType::big) &&
@@ -131,27 +111,7 @@ double Solver::outpost_reprojection_error(Armor armor, const double & pitch)
   // solve
   const auto & object_points =
     (armor.type == ArmorType::big) ? BIG_ARMOR_POINTS : SMALL_ARMOR_POINTS;
-
-  cv::Vec3d rvec, tvec;
-  cv::solvePnP(
-    object_points, armor.points, camera_matrix_, distort_coeffs_, rvec, tvec, false,
-    cv::SOLVEPNP_IPPE);
-
-  Eigen::Vector3d xyz_in_camera;
-  cv::cv2eigen(tvec, xyz_in_camera);
-  armor.xyz_in_gimbal = R_camera2gimbal_ * xyz_in_camera + t_camera2gimbal_;
-  armor.xyz_in_world = R_gimbal2world_ * armor.xyz_in_gimbal;
-
-  cv::Mat rmat;
-  cv::Rodrigues(rvec, rmat);
-  Eigen::Matrix3d R_armor2camera;
-  cv::cv2eigen(rmat, R_armor2camera);
-  Eigen::Matrix3d R_armor2gimbal = R_camera2gimbal_ * R_armor2camera;
-  Eigen::Matrix3d R_armor2world = R_gimbal2world_ * R_armor2gimbal;
-  armor.ypr_in_gimbal = tools::eulers(R_armor2gimbal, 2, 1, 0);
-  armor.ypr_in_world = tools::eulers(R_armor2world, 2, 1, 0);
-
-  armor.ypd_in_world = tools::xyz2ypd(armor.xyz_in_world);
+  solve_ippe(armor, object_points);
 
   auto yaw = armor.ypr_in_world[0];
   auto xyz_in_world = armor.xyz_in_world;
@@ -191,6 +151,114 @@ double Solver::outpost_reprojection_error(Armor armor, const double & pitch)
   auto error = 0.0;
   for (int i = 0; i < 4; i++) error += cv::norm(armor.points[i] - image_points[i]);
   return error;
+}
+
+void Solver::solve_ippe(Armor & armor, const std::vector<cv::Point3f> & object_points) const
+{
+  std::vector<cv::Mat> rvecs;
+  std::vector<cv::Mat> tvecs;
+  cv::solvePnPGeneric(
+    object_points, armor.points, camera_matrix_, distort_coeffs_, rvecs, tvecs, false,
+    cv::SOLVEPNP_IPPE);
+
+  if (rvecs.empty() || tvecs.empty()) {
+    tools::logger()->warn("[Solver] solvePnPGeneric(IPPE) returned no valid pose");
+    return;
+  }
+
+  auto to_vec3d = [](const cv::Mat & vec_mat) {
+    cv::Vec3d vec;
+    const cv::Mat vec64 = vec_mat.reshape(1, 3);
+    vec[0] = vec64.at<double>(0, 0);
+    vec[1] = vec64.at<double>(1, 0);
+    vec[2] = vec64.at<double>(2, 0);
+    return vec;
+  };
+
+  if (rvecs.size() == 1 || tvecs.size() == 1) {
+    update_pose(armor, to_vec3d(rvecs.front()), to_vec3d(tvecs.front()));
+    return;
+  }
+
+  const cv::Vec3d rvec_1 = to_vec3d(rvecs[0]);
+  const cv::Vec3d tvec_1 = to_vec3d(tvecs[0]);
+  const cv::Vec3d rvec_2 = to_vec3d(rvecs[1]);
+  const cv::Vec3d tvec_2 = to_vec3d(tvecs[1]);
+
+  const double cost_1 = ippe_selection_cost(armor, object_points, rvec_1, tvec_1);
+  const double cost_2 = ippe_selection_cost(armor, object_points, rvec_2, tvec_2);
+  update_pose(armor, cost_1 <= cost_2 ? rvec_1 : rvec_2, cost_1 <= cost_2 ? tvec_1 : tvec_2);
+}
+
+void Solver::update_pose(Armor & armor, const cv::Vec3d & rvec, const cv::Vec3d & tvec) const
+{
+  Eigen::Vector3d xyz_in_camera;
+  cv::cv2eigen(tvec, xyz_in_camera);
+  armor.xyz_in_gimbal = R_camera2gimbal_ * xyz_in_camera + t_camera2gimbal_;
+  armor.xyz_in_world = R_gimbal2world_ * armor.xyz_in_gimbal;
+
+  cv::Mat rmat;
+  cv::Rodrigues(rvec, rmat);
+  Eigen::Matrix3d R_armor2camera;
+  cv::cv2eigen(rmat, R_armor2camera);
+  Eigen::Matrix3d R_armor2gimbal = R_camera2gimbal_ * R_armor2camera;
+  Eigen::Matrix3d R_armor2world = R_gimbal2world_ * R_armor2gimbal;
+  armor.ypr_in_gimbal = tools::eulers(R_armor2gimbal, 2, 1, 0);
+  armor.ypr_in_world = tools::eulers(R_armor2world, 2, 1, 0);
+  armor.ypd_in_world = tools::xyz2ypd(armor.xyz_in_world);
+}
+
+double Solver::ippe_selection_cost(
+  const Armor & armor, const std::vector<cv::Point3f> & object_points, const cv::Vec3d & rvec,
+  const cv::Vec3d & tvec) const
+{
+  constexpr double TILT_MISMATCH_PENALTY = 1e6;
+
+  const double reprojection_error = pose_reprojection_error(object_points, armor.points, rvec, tvec);
+  const double observed_tilt = lightbar_tilt_angle(armor.points);
+  Armor pose_armor = armor;
+  update_pose(pose_armor, rvec, tvec);
+  const auto projected_points = reproject_armor(
+    pose_armor.xyz_in_world, pose_armor.ypr_in_world[0], armor.type, armor.name);
+  const double candidate_tilt = lightbar_tilt_angle(projected_points);
+
+  if (std::abs(observed_tilt) < 1e-6 || std::abs(candidate_tilt) < 1e-6) {
+    return reprojection_error;
+  }
+
+  const bool same_tilt_direction =
+    is_left_tilt_from_lightbar(observed_tilt, armor.name) ==
+    is_left_tilt_from_lightbar(candidate_tilt, armor.name);
+  return reprojection_error + (same_tilt_direction ? 0.0 : TILT_MISMATCH_PENALTY);
+}
+
+double Solver::pose_reprojection_error(
+  const std::vector<cv::Point3f> & object_points, const std::vector<cv::Point2f> & image_points,
+  const cv::Vec3d & rvec, const cv::Vec3d & tvec) const
+{
+  std::vector<cv::Point2f> projected_points;
+  cv::projectPoints(object_points, rvec, tvec, camera_matrix_, distort_coeffs_, projected_points);
+
+  auto error = 0.0;
+  for (std::size_t i = 0; i < image_points.size(); ++i) {
+    error += cv::norm(image_points[i] - projected_points[i]);
+  }
+  return error;
+}
+
+double Solver::lightbar_tilt_angle(const std::vector<cv::Point2f> & image_points) const
+{
+  if (image_points.size() != 4) return 0.0;
+
+  const cv::Point2f left_bar = image_points[3] - image_points[0];
+  const cv::Point2f right_bar = image_points[2] - image_points[1];
+  return 0.5 * (std::atan2(left_bar.x, left_bar.y) + std::atan2(right_bar.x, right_bar.y));
+}
+
+bool Solver::is_left_tilt_from_lightbar(double lightbar_tilt, ArmorName name) const
+{
+  const bool same_as_lightbar = lightbar_tilt > 0.0;
+  return name == ArmorName::outpost ? !same_as_lightbar : same_as_lightbar;
 }
 
 void Solver::optimize_yaw(Armor & armor) const
