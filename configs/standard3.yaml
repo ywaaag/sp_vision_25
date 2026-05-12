@@ -12,7 +12,7 @@ min_confidence: 0.8
 use_traditional: false
 
 #####-----ROI-----#####
-roi: 
+roi:
   x: 420
   y: 50
   width: 600
@@ -45,7 +45,7 @@ big_armor_min_ratio: 3.2
 max_side_ratio: 1.5
 max_rectangular_error: 25 # degree
 
-#####-----tracker参数-----#####                                                             
+#####-----tracker参数-----#####
 min_detect_count: 5
 max_temp_lost_count: 15
 outpost_max_temp_lost_count: 75
@@ -76,8 +76,26 @@ vid_pid: "2bdf:0001"
 R_gimbal2imubody: [1, 0, 0, 0, 1, 0, 0, 0, 1]
 
 # 重投影误差: 0.2970px
-camera_matrix: [2362.8567686503243, 0, 717.97736462016246, 0, 2333.4579885082539, 556.8404113201351, 0, 0, 1]
-distort_coeffs: [-0.046393055662647419, -0.40591074542400812, -0.00080338722074019394, -0.00015455426413595798, 0]
+camera_matrix:
+  [
+    2362.8567686503243,
+    0,
+    717.97736462016246,
+    0,
+    2333.4579885082539,
+    556.8404113201351,
+    0,
+    0,
+    1,
+  ]
+distort_coeffs:
+  [
+    -0.046393055662647419,
+    -0.40591074542400812,
+    -0.00080338722074019394,
+    -0.00015455426413595798,
+    0,
+  ]
 
 # 相机同理想情况的偏角: yaw1.44 pitch1.53 roll-1.43 degree
 # 标定板到世界坐标系原点的水平距离: 0.68 m
@@ -107,7 +125,7 @@ plotter:
 fire_thresh: 0.0035
 
 max_yaw_acc: 50
-Q_yaw: [9e2, 0]
+Q_yaw: [9e6, 0]
 R_yaw: [1]
 
 max_pitch_acc: 100
@@ -136,8 +154,8 @@ buff_fyt_detector:
   r_tag_min_area: 12
 
 #####-----buff_aimer参数-----#####
-fire_gap_time: 0.700   # s
-predict_time: 0.120     # s
+fire_gap_time: 0.700 # s
+predict_time: 0.120 # s
 
 #####-----dashboard参数-----#####
 dashboard:
