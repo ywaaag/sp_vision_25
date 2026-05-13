@@ -48,6 +48,7 @@ public:
   Eigen::Vector4d debug_xyza;
   Planner(const std::string & config_path);
 
+  Plan plan_trajectory(const Trajectory & traj, double yaw0);
   Plan plan(Target target, double bullet_speed);
   Plan plan(std::optional<Target> target, double bullet_speed);
   Plan plan(auto_aim_ekfpnp::Target target, double bullet_speed);

@@ -126,6 +126,11 @@ max_pitch_acc: 100
 Q_pitch: [9e6, 0]
 R_pitch: [1]
 
+#####-----curve_generator参数-----#####
+curve_generator:
+  amplitude_deg: 10.0 # 单周期内 target_yaw 从 -amplitude_deg 扫到 +amplitude_deg
+  frequency_hz: 0.2   # target_yaw 周期频率
+
 #####-----plotter-----#####
 plotter:
   host: "127.0.0.1" # PlotJuggler UDP host, change to Windows LAN IP for cross-device debug

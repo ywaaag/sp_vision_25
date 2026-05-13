@@ -65,6 +65,48 @@ bool Planner::apply_hot_param(const std::string & key, double value)
   return true;
 }
 
+Plan Planner::plan_trajectory(const Trajectory & traj, double yaw0)
+{
+  Eigen::VectorXd x0(2);
+  x0 << traj(0, 0), traj(1, 0);
+  tiny_set_x0(yaw_solver_, x0);
+  yaw_solver_->work->Xref = traj.block(0, 0, 2, HORIZON);
+  tiny_solve(yaw_solver_);
+
+  x0 << traj(2, 0), traj(3, 0);
+  tiny_set_x0(pitch_solver_, x0);
+  pitch_solver_->work->Xref = traj.block(2, 0, 2, HORIZON);
+  tiny_solve(pitch_solver_);
+
+  Plan plan;
+  plan.control = true;
+
+  plan.target_yaw = tools::limit_rad(traj(0, HALF_HORIZON) + yaw0);
+  plan.target_pitch = traj(2, HALF_HORIZON);
+
+  plan.yaw = tools::limit_rad(yaw_solver_->work->x(0, HALF_HORIZON) + yaw0);
+  plan.yaw_vel = yaw_solver_->work->x(1, HALF_HORIZON);
+  plan.yaw_acc = yaw_solver_->work->u(0, HALF_HORIZON);
+
+  plan.pitch = pitch_solver_->work->x(0, HALF_HORIZON);
+  plan.pitch_vel = pitch_solver_->work->x(1, HALF_HORIZON);
+  plan.pitch_acc = pitch_solver_->work->u(0, HALF_HORIZON);
+
+  auto shoot_offset_ = 2;
+  double fire_thresh;
+  {
+    std::lock_guard<std::mutex> lock(params_mutex_);
+    fire_thresh = fire_thresh_;
+  }
+
+  plan.fire =
+    std::hypot(
+      traj(0, HALF_HORIZON + shoot_offset_) - yaw_solver_->work->x(0, HALF_HORIZON + shoot_offset_),
+      traj(2, HALF_HORIZON + shoot_offset_) -
+        pitch_solver_->work->x(0, HALF_HORIZON + shoot_offset_)) < fire_thresh;
+  return plan;
+}
+
 Plan Planner::plan(Target target, double bullet_speed)
 {
   // 0. Check bullet speed
@@ -96,48 +138,7 @@ Plan Planner::plan(Target target, double bullet_speed)
     return {false};
   }
 
-  // 3. Solve yaw
-  Eigen::VectorXd x0(2);
-  x0 << traj(0, 0), traj(1, 0);
-  tiny_set_x0(yaw_solver_, x0);
-
-  yaw_solver_->work->Xref = traj.block(0, 0, 2, HORIZON);
-  tiny_solve(yaw_solver_);
-
-  // 4. Solve pitch
-  x0 << traj(2, 0), traj(3, 0);
-  tiny_set_x0(pitch_solver_, x0);
-
-  pitch_solver_->work->Xref = traj.block(2, 0, 2, HORIZON);
-  tiny_solve(pitch_solver_);
-
-  Plan plan;
-  plan.control = true;
-
-  plan.target_yaw = tools::limit_rad(traj(0, HALF_HORIZON) + yaw0);
-  plan.target_pitch = traj(2, HALF_HORIZON);
-
-  plan.yaw = tools::limit_rad(yaw_solver_->work->x(0, HALF_HORIZON) + yaw0);
-  plan.yaw_vel = yaw_solver_->work->x(1, HALF_HORIZON);
-  plan.yaw_acc = yaw_solver_->work->u(0, HALF_HORIZON);
-
-  plan.pitch = pitch_solver_->work->x(0, HALF_HORIZON);
-  plan.pitch_vel = pitch_solver_->work->x(1, HALF_HORIZON);
-  plan.pitch_acc = pitch_solver_->work->u(0, HALF_HORIZON);
-
-  auto shoot_offset_ = 2;
-  double fire_thresh;
-  {
-    std::lock_guard<std::mutex> lock(params_mutex_);
-    fire_thresh = fire_thresh_;
-  }
-
-  plan.fire =
-    std::hypot(
-      traj(0, HALF_HORIZON + shoot_offset_) - yaw_solver_->work->x(0, HALF_HORIZON + shoot_offset_),
-      traj(2, HALF_HORIZON + shoot_offset_) -
-        pitch_solver_->work->x(0, HALF_HORIZON + shoot_offset_)) < fire_thresh;
-  return plan;
+  return plan_trajectory(traj, yaw0);
 }
 
 Plan Planner::plan(std::optional<Target> target, double bullet_speed)
@@ -192,44 +193,7 @@ Plan Planner::plan(auto_aim_ekfpnp::Target target, double bullet_speed)
     return {false};
   }
 
-  Eigen::VectorXd x0(2);
-  x0 << traj(0, 0), traj(1, 0);
-  tiny_set_x0(yaw_solver_, x0);
-  yaw_solver_->work->Xref = traj.block(0, 0, 2, HORIZON);
-  tiny_solve(yaw_solver_);
-
-  x0 << traj(2, 0), traj(3, 0);
-  tiny_set_x0(pitch_solver_, x0);
-  pitch_solver_->work->Xref = traj.block(2, 0, 2, HORIZON);
-  tiny_solve(pitch_solver_);
-
-  Plan plan;
-  plan.control = true;
-
-  plan.target_yaw = tools::limit_rad(traj(0, HALF_HORIZON) + yaw0);
-  plan.target_pitch = traj(2, HALF_HORIZON);
-
-  plan.yaw = tools::limit_rad(yaw_solver_->work->x(0, HALF_HORIZON) + yaw0);
-  plan.yaw_vel = yaw_solver_->work->x(1, HALF_HORIZON);
-  plan.yaw_acc = yaw_solver_->work->u(0, HALF_HORIZON);
-
-  plan.pitch = pitch_solver_->work->x(0, HALF_HORIZON);
-  plan.pitch_vel = pitch_solver_->work->x(1, HALF_HORIZON);
-  plan.pitch_acc = pitch_solver_->work->u(0, HALF_HORIZON);
-
-  auto shoot_offset_ = 2;
-  double fire_thresh;
-  {
-    std::lock_guard<std::mutex> lock(params_mutex_);
-    fire_thresh = fire_thresh_;
-  }
-
-  plan.fire =
-    std::hypot(
-      traj(0, HALF_HORIZON + shoot_offset_) - yaw_solver_->work->x(0, HALF_HORIZON + shoot_offset_),
-      traj(2, HALF_HORIZON + shoot_offset_) -
-        pitch_solver_->work->x(0, HALF_HORIZON + shoot_offset_)) < fire_thresh;
-  return plan;
+  return plan_trajectory(traj, yaw0);
 }
 
 Plan Planner::plan(std::optional<auto_aim_ekfpnp::Target> target, double bullet_speed)

@@ -60,6 +60,7 @@ add_executable(auto_aim_debug_mpc_ekfpnp
     src/auto_aim_debug_mpc_ekfpnp.cpp
     src/auto_aim_debug_dashboard.cpp
 )
+add_executable(curve_generator src/curve_generator.cpp)
 add_executable(auto_aim_delay_calibration src/auto_aim_delay_calibration.cpp)
 add_executable(mt_auto_aim_debug src/mt_auto_aim_debug.cpp)
 add_executable(auto_buff_debug src/auto_buff_debug.cpp)
@@ -72,6 +73,7 @@ target_link_libraries(mt_standard ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_aim auto
 target_link_libraries(standard_mpc ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_aim auto_buff tools io)
 target_link_libraries(auto_aim_debug_mpc ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_aim auto_buff tools io dashboard_config)
 target_link_libraries(auto_aim_debug_mpc_ekfpnp ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_aim auto_aim_ekfpnp auto_buff tools io dashboard_config)
+target_link_libraries(curve_generator ${OpenCV_LIBS} fmt::fmt yaml-cpp auto_aim tools io)
 if(TARGET mqtt_bridge)
     target_link_libraries(auto_aim_debug_mpc mqtt_bridge dashboard_params)
     target_compile_definitions(auto_aim_debug_mpc PRIVATE SP_VISION_ENABLE_DASHBOARD_MQTT)
