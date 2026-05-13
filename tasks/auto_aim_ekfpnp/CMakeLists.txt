@@ -1,4 +1,5 @@
 add_library(auto_aim_ekfpnp OBJECT
+    planner.cpp
     target.cpp
     tracker.cpp
 )
