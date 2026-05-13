@@ -8,7 +8,7 @@ yolo11_model_path: assets/yolo11.xml
 yolov8_model_path: assets/yolov8.xml
 yolov5_model_path: assets/yolov5.xml
 device: CPU
-min_confidence: 0.8
+min_confidence: 0.4
 use_traditional: false
 
 #####-----ROI-----#####
@@ -51,13 +51,13 @@ max_temp_lost_count: 15
 outpost_max_temp_lost_count: 75
 
 #####-----aimer参数-----#####
-yaw_offset: 1.0 # degree -2.5
-pitch_offset: -2.0 # degree 2
+yaw_offset: 1.2 # degree -2.5
+pitch_offset: -1.2 # degree 2
 comming_angle: 55 # degree
 leaving_angle: 15 # degree
 decision_speed: 7 # rad/s
 high_speed_delay_time: 0.065 # s
-low_speed_delay_time: 0.052 # s planner use this value
+low_speed_delay_time: 0.085 # s planner use this value
 
 #####-----shooter参数-----#####
 first_tolerance: 3 # 近距离射击容差，degree
@@ -101,7 +101,7 @@ distort_coeffs:
 # 标定板到世界坐标系原点的水平距离: 0.68 m
 # 标定板同竖直摆放时的偏角: yaw113.23 pitch-2.61 roll176.90 degree
 R_camera2gimbal: [-0.025703395767204502, 0.025976480646549085, 0.99933205587494989, -0.99935871541881738, -0.025597283713670836, -0.025038709689858749, 0.024929768600723993, -0.99933477950069427, 0.026617759443894988]
-t_camera2gimbal: [0.057420946890602148, -0.0053366816087983306, 0.05656719340378806]
+t_camera2gimbal: [0.027,0.0,0.057]
 
 #####-----cboard参数-----#####
 quaternion_canid: 0x100

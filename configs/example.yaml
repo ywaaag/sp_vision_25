@@ -56,6 +56,7 @@ can_interface: "can0"
 #####-----tracker参数-----#####
 min_detect_count: 5
 max_temp_lost_count: 15
+outpost_max_temp_lost_count: 150
 
 #####-----aimer参数-----#####
 yaw_offset: -2.5 # degree -2.5
