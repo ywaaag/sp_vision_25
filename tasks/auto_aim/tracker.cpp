@@ -36,7 +36,7 @@ std::list<Target> Tracker::track(
 
   // 时间间隔过长，说明可能发生了相机离线
   if (state_ != "lost" && dt > 0.1) {
-    tools::logger()->warn("[Tracker] Large dt: {:.3f}s", dt);
+    tools::logger()->warn("[Tracker] Large dt: {:.3f}s, reset target.", dt);
     state_ = "lost";
   }
   // 过滤掉非我方装甲板
@@ -74,7 +74,9 @@ std::list<Target> Tracker::track(
 
   // 发散检测
   if (state_ != "lost" && target_.diverged()) {
-    tools::logger()->debug("[Tracker] Target diverged!");
+    tools::logger()->warn(
+      "[Tracker] Target diverged, reset target. name={} r={:.4f} l={:.4f} w={:.3f}",
+      ARMOR_NAMES[target_.name], target_.ekf_x()[8], target_.ekf_x()[9], target_.ekf_x()[7]);
     state_ = "lost";
     return {};
   }
@@ -111,7 +113,7 @@ std::tuple<omniperception::DetectionResult, std::list<Target>> Tracker::track(
 
   // 时间间隔过长，说明可能发生了相机离线
   if (state_ != "lost" && dt > 0.1) {
-    tools::logger()->warn("[Tracker] Large dt: {:.3f}s", dt);
+    tools::logger()->warn("[Tracker] Large dt: {:.3f}s, reset target.", dt);
     state_ = "lost";
   }
 
@@ -167,7 +169,9 @@ std::tuple<omniperception::DetectionResult, std::list<Target>> Tracker::track(
 
   // 发散检测
   if (state_ != "lost" && target_.diverged()) {
-    tools::logger()->debug("[Tracker] Target diverged!");
+    tools::logger()->warn(
+      "[Tracker] Target diverged, reset target. name={} r={:.4f} l={:.4f} w={:.3f}",
+      ARMOR_NAMES[target_.name], target_.ekf_x()[8], target_.ekf_x()[9], target_.ekf_x()[7]);
     state_ = "lost";
     return {switch_target, {}};  // 返回switch_target和空的targets
   }
@@ -191,6 +195,11 @@ void Tracker::state_machine(bool found)
     if (found) {
       detect_count_++;
       if (detect_count_ >= min_detect_count_) state_ = "tracking";
+    } else if (target_.name == ArmorName::outpost) {
+      temp_lost_count_ = 1;
+      max_temp_lost_count_ = outpost_max_temp_lost_count_;
+      state_ = "temp_lost";
+      tools::logger()->debug("[Tracker] Outpost detecting interrupted, keep target in temp_lost.");
     } else {
       detect_count_ = 0;
       state_ = "lost";
@@ -224,7 +233,12 @@ void Tracker::state_machine(bool found)
       else
         max_temp_lost_count_ = normal_temp_lost_count_;
 
-      if (temp_lost_count_ > max_temp_lost_count_) state_ = "lost";
+      if (temp_lost_count_ > max_temp_lost_count_) {
+        tools::logger()->info(
+          "[Tracker] Temp lost timeout, reset target. name={} count={} max={}",
+          ARMOR_NAMES[target_.name], temp_lost_count_, max_temp_lost_count_);
+        state_ = "lost";
+      }
     }
   }
 }
@@ -248,7 +262,8 @@ bool Tracker::set_target(std::list<Armor> & armors, std::chrono::steady_clock::t
 
   else if (armor.name == ArmorName::outpost) {
     Eigen::VectorXd P0_dig{{1, 64, 1, 64, 1, 81, 0.4, 100, 1e-4, 0, 0}};
-    target_ = Target(armor, t, 0.2765, 3, P0_dig);
+    target_ = Target(armor, t, 0.275, 3, P0_dig);
+    tools::logger()->info("[Tracker] Init outpost target.");
   }
 
   else if (armor.name == ArmorName::base) {

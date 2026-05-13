@@ -8,7 +8,7 @@ yolo11_model_path: assets/yolo11.xml
 yolov8_model_path: assets/yolov8.xml
 yolov5_model_path: assets/yolov5.xml
 device: CPU
-min_confidence: 0.8
+min_confidence: 0.4
 use_traditional: false
 
 #####-----ROI-----#####
@@ -43,7 +43,7 @@ comming_angle: 55 # degree
 leaving_angle: 15 # degree
 decision_speed: 7 # rad/s
 high_speed_delay_time: 0.065 # s
-low_speed_delay_time: 0.052 # s planner use this value
+low_speed_delay_time: 0.085 # s planner use this value
 
 #####-----shooter参数-----#####
 first_tolerance: 3 # 近距离射击容差，degree
