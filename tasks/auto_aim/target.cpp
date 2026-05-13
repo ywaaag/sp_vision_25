@@ -9,11 +9,6 @@
 
 namespace auto_aim
 {
-namespace
-{
-constexpr double OUTPOST_DIRECTION_READY_SPEED = 0.5;
-}
-
 Target::Target(
   const Armor & armor, std::chrono::steady_clock::time_point t, double radius, int armor_num,
   Eigen::VectorXd P0_dig)
@@ -27,14 +22,10 @@ Target::Target(
   is_switch_(false),
   is_converged_(false),
   outpost_height_ready_(false),
-  outpost_fixed_model_ready_(false),
   outpost_observed_mask_(0),
   outpost_height_sums_{0.0, 0.0, 0.0},
   outpost_height_counts_{0, 0, 0},
   outpost_height_order_{0, 0, 0},
-  outpost_fixed_center_(Eigen::Vector3d::Zero()),
-  outpost_fixed_radius_(0.0),
-  outpost_fixed_w_(0.0),
   t_(t)
 {
   auto r = radius;
@@ -71,14 +62,10 @@ Target::Target(double x, double vyaw, double radius, double h)
   is_switch_(false),
   is_converged_(false),
   outpost_height_ready_(false),
-  outpost_fixed_model_ready_(false),
   outpost_observed_mask_(0),
   outpost_height_sums_{0.0, 0.0, 0.0},
   outpost_height_counts_{0, 0, 0},
-  outpost_height_order_{0, 0, 0},
-  outpost_fixed_center_(Eigen::Vector3d::Zero()),
-  outpost_fixed_radius_(0.0),
-  outpost_fixed_w_(0.0)
+  outpost_height_order_{0, 0, 0}
 {
   Eigen::VectorXd x0{{x, 0, 0, 0, 0, 0, 0, vyaw, radius, 0, h}};
   Eigen::VectorXd P0_dig{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}};
@@ -156,7 +143,6 @@ void Target::predict(double dt)
   }
 
   ekf_.predict(F, Q, f);
-  apply_outpost_fixed_model();
 }
 
 void Target::update(const Armor & armor)
@@ -181,18 +167,15 @@ void Target::update(const Armor & armor)
   for (int i = 0; i < std::min(3, static_cast<int>(xyza_i_list.size())); i++) {
     const auto & xyza = xyza_i_list[i].first;
     Eigen::Vector3d ypd = tools::xyz2ypd(xyza.head(3));
-    auto association_score = std::abs(tools::limit_rad(armor.ypr_in_world[0] - xyza[3])) +
-                             std::abs(tools::limit_rad(armor.ypd_in_world[0] - ypd[0]));
+    auto angle_error = std::abs(tools::limit_rad(armor.ypr_in_world[0] - xyza[3])) +
+                       std::abs(tools::limit_rad(armor.ypd_in_world[0] - ypd[0]));
     if (use_outpost_staggered_height_model()) {
-      const auto pitch_error = std::abs(tools::limit_rad(armor.ypd_in_world[1] - ypd[1]));
-      const auto height_error =
-        std::abs(armor.xyz_in_world[2] - xyza[2]) / OUTPOST_ARMOR_HEIGHT_STEP;
-      association_score += 2.0 * pitch_error + height_error;
+      angle_error += std::abs(tools::limit_rad(armor.ypd_in_world[1] - ypd[1]));
     }
 
-    if (association_score < min_angle_error) {
+    if (std::abs(angle_error) < std::abs(min_angle_error)) {
       id = xyza_i_list[i].second;
-      min_angle_error = association_score;
+      min_angle_error = angle_error;
     }
   }
 
@@ -204,63 +187,18 @@ void Target::update(const Armor & armor)
   last_id = id;
   update_count_++;
 
-  if (is_outpost_target()) {
-    std::array<double, OUTPOST_ARMOR_COUNT> avg_z{};
-    for (int i = 0; i < OUTPOST_ARMOR_COUNT; ++i) {
-      avg_z[i] = outpost_height_counts_[i] > 0
-                   ? outpost_height_sums_[i] / outpost_height_counts_[i]
-                   : 0.0;
-    }
-
-    tools::logger()->info(
-      "[OutpostDebug] update id={} switch={} ready={} mask={} obs_xyz=({:.3f},{:.3f},{:.3f}) "
-      "obs_ypd=({:.3f},{:.3f},{:.3f}) obs_yaw={:.3f} ekf_center=({:.3f},{:.3f},{:.3f}) "
-      "ekf_v=({:.3f},{:.3f},{:.3f}) a={:.3f} w={:.3f} r={:.4f} avg_z=[{:.3f},{:.3f},{:.3f}] "
-      "cnt=[{},{},{}] order=[{},{},{}]",
-      id, is_switch_ ? 1 : 0, outpost_height_ready_ ? 1 : 0, outpost_observed_mask_,
-      armor.xyz_in_world[0], armor.xyz_in_world[1], armor.xyz_in_world[2], armor.ypd_in_world[0],
-      armor.ypd_in_world[1], armor.ypd_in_world[2], armor.ypr_in_world[0], ekf_.x[0], ekf_.x[2],
-      ekf_.x[4], ekf_.x[1], ekf_.x[3], ekf_.x[5], ekf_.x[6], ekf_.x[7], ekf_.x[8], avg_z[0],
-      avg_z[1], avg_z[2], outpost_height_counts_[0], outpost_height_counts_[1],
-      outpost_height_counts_[2], outpost_height_order_[0], outpost_height_order_[1],
-      outpost_height_order_[2]);
-
-    for (int i = 0; i < armor_num_; ++i) {
-      const auto predicted_xyz = h_armor_xyz(ekf_.x, i);
-      const auto predicted_ypd = tools::xyz2ypd(predicted_xyz);
-      const auto predicted_angle = tools::limit_rad(ekf_.x[6] + i * 2 * CV_PI / armor_num_);
-      tools::logger()->info(
-        "[OutpostDebug] pred id={} xyz=({:.3f},{:.3f},{:.3f}) ypd=({:.3f},{:.3f},{:.3f}) "
-        "angle={:.3f} dz_to_obs={:.3f}",
-        i, predicted_xyz[0], predicted_xyz[1], predicted_xyz[2], predicted_ypd[0],
-        predicted_ypd[1], predicted_ypd[2], predicted_angle,
-        armor.xyz_in_world[2] - predicted_xyz[2]);
-    }
-  }
-
   record_outpost_observation(id, armor);
   update_ypda(armor, id);
-  apply_outpost_fixed_model();
 }
 
 void Target::update_ypda(const Armor & armor, int id)
 {
-  const bool lock_outpost_height = use_outpost_staggered_height_model();
-  const double outpost_center_z = ekf_.x[4];
   Eigen::MatrixXd H = h_jacobian(ekf_.x, id);
-  if (lock_outpost_height) {
-    H.row(1).setZero();
-    H(2, 4) = 0.0;
-  }
-
   auto center_yaw = std::atan2(armor.xyz_in_world[1], armor.xyz_in_world[0]);
   auto delta_angle = tools::limit_rad(armor.ypr_in_world[0] - center_yaw);
   Eigen::VectorXd R_dig{
     {4e-3, 4e-3, log(std::abs(delta_angle) + 1) + 1,
      log(std::abs(armor.ypd_in_world[2]) + 1) / 200 + 9e-2}};
-  if (lock_outpost_height) {
-    R_dig[1] = 1e6;
-  }
 
   Eigen::MatrixXd R = R_dig.asDiagonal();
 
@@ -284,10 +222,6 @@ void Target::update_ypda(const Armor & armor, int id)
   Eigen::VectorXd z{{ypd[0], ypd[1], ypd[2], ypr[0]}};
 
   ekf_.update(z, H, R, h, z_subtract);
-  if (lock_outpost_height) {
-    ekf_.x[4] = outpost_center_z;
-    ekf_.x[5] = 0.0;
-  }
 }
 
 Eigen::VectorXd Target::ekf_x() const { return ekf_.x; }
@@ -348,85 +282,35 @@ void Target::record_outpost_observation(int id, const Armor & armor)
   outpost_height_sums_[id] += armor.xyz_in_world[2];
   outpost_height_counts_[id] += 1;
 
-  tools::logger()->info(
-    "[OutpostDebug] record id={} z={:.3f} sum={:.3f} count={} mask={} ready={}", id,
-    armor.xyz_in_world[2], outpost_height_sums_[id], outpost_height_counts_[id],
-    outpost_observed_mask_, outpost_height_ready_ ? 1 : 0);
-
   if (outpost_height_ready_ || outpost_observed_mask_ != ((1 << OUTPOST_ARMOR_COUNT) - 1)) {
     return;
   }
 
-  std::array<double, OUTPOST_ARMOR_COUNT> avg_height{};
+  std::array<std::pair<double, int>, OUTPOST_ARMOR_COUNT> avg_height_and_id{};
   for (int i = 0; i < OUTPOST_ARMOR_COUNT; ++i) {
-    avg_height[i] = outpost_height_sums_[i] / std::max(1, outpost_height_counts_[i]);
+    const double avg_z = outpost_height_sums_[i] / std::max(1, outpost_height_counts_[i]);
+    avg_height_and_id[i] = {avg_z, i};
   }
-
-  if (std::abs(ekf_.x[7]) < OUTPOST_DIRECTION_READY_SPEED) {
-    tools::logger()->info(
-      "[OutpostDebug] height model pending direction w={:.3f} avg_z=[{:.3f},{:.3f},{:.3f}]",
-      ekf_.x[7], avg_height[0], avg_height[1], avg_height[2]);
-    return;
-  }
+  std::sort(
+    avg_height_and_id.begin(), avg_height_and_id.end(),
+    [](const auto & lhs, const auto & rhs) { return lhs.first < rhs.first; });
 
   outpost_height_order_.fill(0);
-  const auto high_it = std::max_element(avg_height.begin(), avg_height.end());
-  const int high_id = static_cast<int>(std::distance(avg_height.begin(), high_it));
-  const int next_id = (high_id + 1) % OUTPOST_ARMOR_COUNT;
-  const int prev_id = (high_id + OUTPOST_ARMOR_COUNT - 1) % OUTPOST_ARMOR_COUNT;
-  const bool positive_direction = ekf_.x[7] > 0;
-  const int low_id = positive_direction ? prev_id : next_id;
-  const int middle_id = positive_direction ? next_id : prev_id;
-  outpost_height_order_[high_id] = 1;
-  outpost_height_order_[low_id] = -1;
-  outpost_height_order_[middle_id] = 0;
+  outpost_height_order_[avg_height_and_id[0].second] = -1;
+  outpost_height_order_[avg_height_and_id[1].second] = 0;
+  outpost_height_order_[avg_height_and_id[2].second] = 1;
   outpost_height_ready_ = true;
 
-  std::array<double, OUTPOST_ARMOR_COUNT> center_z_candidates{};
-  for (int i = 0; i < OUTPOST_ARMOR_COUNT; ++i) {
-    center_z_candidates[i] =
-      avg_height[i] - static_cast<double>(outpost_height_order_[i]) * OUTPOST_ARMOR_HEIGHT_STEP;
-  }
-  std::sort(center_z_candidates.begin(), center_z_candidates.end());
-
-  ekf_.x[4] = center_z_candidates[OUTPOST_ARMOR_COUNT / 2];
-  ekf_.x[5] = 0.0;
-  outpost_fixed_center_ = {ekf_.x[0], ekf_.x[2], ekf_.x[4]};
-  outpost_fixed_radius_ = ekf_.x[8];
-  outpost_fixed_w_ = positive_direction ? 2.51 : -2.51;
-  outpost_fixed_model_ready_ = true;
-  apply_outpost_fixed_model();
+  ekf_.x[4] = avg_height_and_id[1].first;
   tools::logger()->info(
-    "[OutpostDebug] height model activated direction={} sequence={} high=(id {}, z {:.3f}) "
-    "low=(id {}, z {:.3f}) mid=(id {}, z {:.3f}) order=[{},{},{}] fixed_center=({:.3f},{:.3f},{:.3f}) "
-    "fixed_r={:.4f} fixed_w={:.3f}",
-    positive_direction ? "positive" : "negative",
-    positive_direction ? "high-low-middle" : "high-middle-low", high_id, avg_height[high_id],
-    low_id, avg_height[low_id], middle_id, avg_height[middle_id], outpost_height_order_[0],
-    outpost_height_order_[1], outpost_height_order_[2], outpost_fixed_center_[0],
-    outpost_fixed_center_[1], outpost_fixed_center_[2], outpost_fixed_radius_, outpost_fixed_w_);
+    "[Target] Outpost staggered height model activated, middle z = {:.3f}",
+    avg_height_and_id[1].first);
 }
 
 double Target::outpost_height_offset(int id) const
 {
   if (!use_outpost_staggered_height_model() || id < 0 || id >= OUTPOST_ARMOR_COUNT) return 0.0;
   return static_cast<double>(outpost_height_order_[id]) * OUTPOST_ARMOR_HEIGHT_STEP;
-}
-
-void Target::apply_outpost_fixed_model()
-{
-  if (!outpost_fixed_model_ready_) return;
-
-  ekf_.x[0] = outpost_fixed_center_[0];
-  ekf_.x[1] = 0.0;
-  ekf_.x[2] = outpost_fixed_center_[1];
-  ekf_.x[3] = 0.0;
-  ekf_.x[4] = outpost_fixed_center_[2];
-  ekf_.x[5] = 0.0;
-  ekf_.x[7] = outpost_fixed_w_;
-  ekf_.x[8] = outpost_fixed_radius_;
-  ekf_.x[9] = 0.0;
-  ekf_.x[10] = 0.0;
 }
 
 Eigen::Vector3d Target::h_armor_xyz(const Eigen::VectorXd & x, int id) const
