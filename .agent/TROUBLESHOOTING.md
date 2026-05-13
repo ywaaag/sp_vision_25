@@ -106,6 +106,18 @@
    - 解决方案: `auto_aim_debug_mpc` 运行时可加 `--headless=true`，`sentry_omni_perception_debug_mpc` 默认不要加 `--display`；在已支持自动降级的版本里，首次 GUI 初始化失败后会自动关闭显示窗口，仅保留 Plotter/Dashboard/控制链路。
    - 验证命令: `./build/auto_aim_debug_mpc --headless=true`
 
+5. **`imshow` 正常运行但窗口显示到其他桌面 / X 会话**:
+   - 错误现象: `./build/outpost_test` 不报 `XOpenDisplay` 或 GTK 错误，程序正常运行，但当前桌面看不到 OpenCV 窗口。
+   - 原因特征: 容器内 `DISPLAY` 指向了另一个可连接的 X display，例如 `DISPLAY=:0` 对应 Openbox/NoMachine 会话，而当前可见 GNOME 桌面在 `:2`；此时 `xhost +` 只能解决权限问题，不能自动选择正确 display。
+   - 解决方案: 在运行测试前显式指定当前桌面的 display，例如 `export DISPLAY=:2` 后再启动，或通过 `docker exec -e DISPLAY=:2 ...` 运行。
+   - 验证命令: `xdpyinfo -display :2` 能正常输出，且 `xwininfo -root -tree -display :2 | grep outpost_test` 能看到窗口。
+
+6. **`sentry_omni_perception_debug_mpc` 无 USB 侧视相机时反复打印 USB 打开失败**:
+   - 错误现象: 只有海康主相机时启动 `./build/sentry_omni_perception_debug_mpc`，主程序不崩溃，但持续打印 `Failed to open USB camera`。
+   - 原因特征: 该入口是主海康 + 左右 USB 侧视融合链路，默认会构造 `/dev/video2` 和 `/dev/video0` 两路 `USBCamera`；没有对应设备时，USB 守护线程会持续重试。
+   - 解决方案: 只使用海康主相机调试时，加 `--disable-usb` 禁用左右 USB 侧视相机。
+   - 验证命令: `./build/sentry_omni_perception_debug_mpc --disable-usb` 不再打印 USB 打开失败。
+
 ## 标定问题排查
 
 ### 标定失败流程
