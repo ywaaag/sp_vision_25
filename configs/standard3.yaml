@@ -128,8 +128,11 @@ R_pitch: [1]
 
 #####-----curve_generator参数-----#####
 curve_generator:
-  amplitude_deg: 10.0 # 单周期内 target_yaw 从 -amplitude_deg 扫到 +amplitude_deg
-  frequency_hz: 0.2   # target_yaw 周期频率
+  amplitude_deg: 10.0      # 单周期内 target_yaw 从 -amplitude_deg 扫到 +amplitude_deg
+  frequency_hz: 0.2        # target_yaw 周期频率
+  pitch_frequency_hz: 0.1  # target_pitch 阶跃切换频率
+  pitch_low_deg: -2.0      # target_pitch 阶跃低电平
+  pitch_high_deg: 2.0      # target_pitch 阶跃高电平
 
 #####-----plotter-----#####
 plotter:
