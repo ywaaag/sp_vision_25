@@ -1,6 +1,7 @@
 #pragma once
 #include <memory>
 
+#include "combat_rm_interfaces/msg/armors.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "publishrefereedata.hpp"
 #include "subscribenavcmd.hpp"
@@ -22,6 +23,7 @@ public:
     void publish(const RobotPosPackage::data & pkg);
     void publish(const GroundRobotPositionPackage::data & pkg);
     void publish(const GameRobotHpPackage::data & pkg);
+    void publish(const combat_rm_interfaces::msg::Armors & msg);
     void publish(float yaw, float pitch, float yaw_diff);
 
     uint8_t getChassisStatus();

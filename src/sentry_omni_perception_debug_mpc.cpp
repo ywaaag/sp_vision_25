@@ -1,14 +1,18 @@
 #include <fmt/core.h>
 
+#include <Eigen/Geometry>
 #include <atomic>
 #include <chrono>
 #include <list>
+#include <memory>
 #include <mutex>
 #include <nlohmann/json.hpp>
 #include <opencv2/opencv.hpp>
 #include <optional>
 #include <thread>
 
+#include "combat_rm_interfaces/msg/armor.hpp"
+#include "combat_rm_interfaces/msg/armors.hpp"
 #include "io/camera.hpp"
 #include "io/gimbal/gimbal.hpp"
 #include "io/ros2/ros2.hpp"
@@ -110,6 +114,63 @@ double usb_target_yaw_trim(TargetSource source)
   }
 }
 
+
+std::string armor_number(auto_aim::ArmorName name)
+{
+  switch (name) {
+    case auto_aim::ArmorName::one:
+      return "1";
+    case auto_aim::ArmorName::two:
+      return "2";
+    case auto_aim::ArmorName::three:
+      return "3";
+    case auto_aim::ArmorName::four:
+      return "4";
+    case auto_aim::ArmorName::five:
+      return "5";
+    case auto_aim::ArmorName::outpost:
+      return "6";
+    case auto_aim::ArmorName::sentry:
+      return "7";
+    case auto_aim::ArmorName::base:
+      return "0";
+    case auto_aim::ArmorName::not_armor:
+      return "";
+  }
+
+  return "";
+}
+
+combat_rm_interfaces::msg::Armors make_armors_msg(const std::list<auto_aim::Armor> & armors)
+{
+  combat_rm_interfaces::msg::Armors msg;
+  msg.header.stamp = rclcpp::Clock(RCL_SYSTEM_TIME).now();
+  msg.header.frame_id = "vision_world";
+  msg.armors.reserve(armors.size());
+
+  for (const auto & armor : armors) {
+    combat_rm_interfaces::msg::Armor armor_msg;
+    armor_msg.number = armor_number(armor.name);
+    armor_msg.type = auto_aim::ARMOR_TYPES[armor.type];
+    armor_msg.pose.position.x = armor.xyz_in_world.x();
+    armor_msg.pose.position.y = armor.xyz_in_world.y();
+    armor_msg.pose.position.z = armor.xyz_in_world.z();
+
+    const Eigen::Quaterniond q =
+      Eigen::AngleAxisd(armor.ypr_in_world[0], Eigen::Vector3d::UnitZ()) *
+      Eigen::AngleAxisd(armor.ypr_in_world[1], Eigen::Vector3d::UnitY()) *
+      Eigen::AngleAxisd(armor.ypr_in_world[2], Eigen::Vector3d::UnitX());
+    armor_msg.pose.orientation.x = q.x();
+    armor_msg.pose.orientation.y = q.y();
+    armor_msg.pose.orientation.z = q.z();
+    armor_msg.pose.orientation.w = q.w();
+
+    msg.armors.emplace_back(std::move(armor_msg));
+  }
+
+  return msg;
+}
+
 Eigen::Quaterniond usb_world_q(const Eigen::Quaterniond & q)
 {
   // The side USB cameras do not follow gimbal pitch; keep yaw/roll and clamp pitch to zero.
@@ -167,6 +228,7 @@ std::optional<UsbCandidate> select_nearest_candidate(
 const std::string keys =
   "{help h usage ? |                        | 输出命令行参数说明}"
   "{display d      |                        | 显示主相机与左右USB画面}"
+  "{disable-usb    |                        | 禁用左右USB侧视相机，仅使用主海康相机}"
   "{@config-path   | configs/standard3.yaml | 位置参数，yaml配置文件路径 }";
 
 int main(int argc, char * argv[])
@@ -177,6 +239,7 @@ int main(int argc, char * argv[])
   cv::CommandLineParser cli(argc, argv, keys);
   auto config_path = cli.get<std::string>(0);
   bool display = cli.has("display");
+  const bool use_usb = !cli.has("disable-usb");
   if (cli.has("help") || config_path.empty()) {
     cli.printMessage();
     return 0;
@@ -188,10 +251,16 @@ int main(int argc, char * argv[])
 
   io::Gimbal gimbal(config_path);
   io::ROS2 ros2;
-  io::USBCamera usb_left_camera(USB_LEFT_DEVICE, config_path);
-  io::USBCamera usb_right_camera(USB_RIGHT_DEVICE, config_path);
-  // Match `usbcamera_test` startup more closely: let the USB cameras settle before starting HikRobot.
-  std::this_thread::sleep_for(USB_STARTUP_SETTLE);
+  std::unique_ptr<io::USBCamera> usb_left_camera;
+  std::unique_ptr<io::USBCamera> usb_right_camera;
+  if (use_usb) {
+    usb_left_camera = std::make_unique<io::USBCamera>(USB_LEFT_DEVICE, config_path);
+    usb_right_camera = std::make_unique<io::USBCamera>(USB_RIGHT_DEVICE, config_path);
+    // Match `usbcamera_test` startup more closely: let the USB cameras settle before starting HikRobot.
+    std::this_thread::sleep_for(USB_STARTUP_SETTLE);
+  } else {
+    tools::logger()->info("[sentry_omni_perception_debug_mpc] USB side cameras disabled.");
+  }
   io::Camera camera(config_path);
 
   auto_aim::YOLO yolo(config_path, display);
@@ -306,66 +375,69 @@ int main(int argc, char * argv[])
     }
   });
 
-  auto usb_thread = std::thread([&]() {
-    while (!quit) {
-      cv::Mat usb_left_img;
-      cv::Mat usb_right_img;
-      std::chrono::steady_clock::time_point usb_left_t;
-      std::chrono::steady_clock::time_point usb_right_t;
+  std::thread usb_thread;
+  if (use_usb) {
+    usb_thread = std::thread([&]() {
+      while (!quit) {
+        cv::Mat usb_left_img;
+        cv::Mat usb_right_img;
+        std::chrono::steady_clock::time_point usb_left_t;
+        std::chrono::steady_clock::time_point usb_right_t;
 
-      usb_left_camera.read(usb_left_img, usb_left_t);
-      if (quit) break;
-      usb_right_camera.read(usb_right_img, usb_right_t);
-      if (quit) break;
+        usb_left_camera->read(usb_left_img, usb_left_t);
+        if (quit) break;
+        usb_right_camera->read(usb_right_img, usb_right_t);
+        if (quit) break;
 
-      auto usb_left_q = usb_world_q(gimbal.q(usb_left_t - GIMBAL_DELAY));
-      auto usb_right_q = usb_world_q(gimbal.q(usb_right_t - GIMBAL_DELAY));
-      usb_left_solver.set_R_gimbal2world(usb_left_q);
-      usb_right_solver.set_R_gimbal2world(usb_right_q);
+        auto usb_left_q = usb_world_q(gimbal.q(usb_left_t - GIMBAL_DELAY));
+        auto usb_right_q = usb_world_q(gimbal.q(usb_right_t - GIMBAL_DELAY));
+        usb_left_solver.set_R_gimbal2world(usb_left_q);
+        usb_right_solver.set_R_gimbal2world(usb_right_q);
 
-      UsbThreadResult next_usb_result;
-      next_usb_result.left_img = usb_left_img;
-      next_usb_result.right_img = usb_right_img;
-      if (main_camera_has_target.load()) {
+        UsbThreadResult next_usb_result;
+        next_usb_result.left_img = usb_left_img;
+        next_usb_result.right_img = usb_right_img;
+        if (main_camera_has_target.load()) {
+          next_usb_result.ready = true;
+          std::lock_guard<std::mutex> lock(usb_result_mutex);
+          usb_result = std::move(next_usb_result);
+          std::this_thread::sleep_for(10ms);
+          continue;
+        }
+
+        next_usb_result.left_armors =
+          filter_enemy_armors(usb_yolo.detect(usb_left_img), enemy_color);
+        next_usb_result.right_armors =
+          filter_enemy_armors(usb_yolo.detect(usb_right_img), enemy_color);
+
+        solve_armors(next_usb_result.left_armors, usb_left_solver);
+        solve_armors(next_usb_result.right_armors, usb_right_solver);
+        next_usb_result.candidate = select_nearest_candidate(
+          next_usb_result.left_armors, usb_left_t, next_usb_result.right_armors, usb_right_t);
+
+        if (next_usb_result.candidate.has_value()) {
+          std::list<auto_aim::Armor> selected_armors = {next_usb_result.candidate->armor};
+          std::list<auto_aim::Target> usb_targets;
+
+          if (next_usb_result.candidate->source == TargetSource::usb_left) {
+            usb_targets = usb_left_tracker.track(selected_armors, next_usb_result.candidate->timestamp, false);
+          } else {
+            usb_targets =
+              usb_right_tracker.track(selected_armors, next_usb_result.candidate->timestamp, false);
+          }
+
+          if (!usb_targets.empty()) {
+            next_usb_result.target_command.target = usb_targets.front();
+            next_usb_result.target_command.source = next_usb_result.candidate->source;
+          }
+        }
+
         next_usb_result.ready = true;
         std::lock_guard<std::mutex> lock(usb_result_mutex);
         usb_result = std::move(next_usb_result);
-        std::this_thread::sleep_for(10ms);
-        continue;
       }
-
-      next_usb_result.left_armors =
-        filter_enemy_armors(usb_yolo.detect(usb_left_img), enemy_color);
-      next_usb_result.right_armors =
-        filter_enemy_armors(usb_yolo.detect(usb_right_img), enemy_color);
-
-      solve_armors(next_usb_result.left_armors, usb_left_solver);
-      solve_armors(next_usb_result.right_armors, usb_right_solver);
-      next_usb_result.candidate = select_nearest_candidate(
-        next_usb_result.left_armors, usb_left_t, next_usb_result.right_armors, usb_right_t);
-
-      if (next_usb_result.candidate.has_value()) {
-        std::list<auto_aim::Armor> selected_armors = {next_usb_result.candidate->armor};
-        std::list<auto_aim::Target> usb_targets;
-
-        if (next_usb_result.candidate->source == TargetSource::usb_left) {
-          usb_targets = usb_left_tracker.track(selected_armors, next_usb_result.candidate->timestamp, false);
-        } else {
-          usb_targets =
-            usb_right_tracker.track(selected_armors, next_usb_result.candidate->timestamp, false);
-        }
-
-        if (!usb_targets.empty()) {
-          next_usb_result.target_command.target = usb_targets.front();
-          next_usb_result.target_command.source = next_usb_result.candidate->source;
-        }
-      }
-
-      next_usb_result.ready = true;
-      std::lock_guard<std::mutex> lock(usb_result_mutex);
-      usb_result = std::move(next_usb_result);
-    }
-  });
+    });
+  }
 
   cv::Mat img;
   std::chrono::steady_clock::time_point t;
@@ -379,8 +451,10 @@ int main(int argc, char * argv[])
 
     main_solver.set_R_gimbal2world(q);
     auto main_armors = yolo.detect(img);
+    solve_armors(main_armors, main_solver);
     main_camera_has_target = !main_armors.empty();
     auto main_targets = main_tracker.track(main_armors, t);
+    ros2.publish(make_armors_msg(main_armors));
 
     UsbThreadResult current_usb_result;
     {
@@ -390,11 +464,9 @@ int main(int argc, char * argv[])
 
     TargetCommand target_command;
 
-    if (!main_armors.empty()) {
-      if (!main_targets.empty()) {
-        target_command.target = main_targets.front();
-        target_command.source = TargetSource::main;
-      }
+    if (!main_targets.empty()) {
+      target_command.target = main_targets.front();
+      target_command.source = TargetSource::main;
     } else if (current_usb_result.ready) {
       target_command = current_usb_result.target_command;
     }
