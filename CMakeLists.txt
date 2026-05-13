@@ -59,6 +59,7 @@ add_executable(auto_aim_debug_mpc_ekfpnp
     src/auto_aim_debug_mpc_ekfpnp.cpp
     src/auto_aim_debug_dashboard.cpp
 )
+add_executable(auto_aim_delay_tuner src/auto_aim_delay_tuner.cpp)
 add_executable(auto_aim_delay_calibration src/auto_aim_delay_calibration.cpp)
 add_executable(omni_perception_delay_tuner src/omni_perception_delay_tuner.cpp)
 add_executable(mt_auto_aim_debug src/mt_auto_aim_debug.cpp)
