@@ -9,10 +9,25 @@ using namespace std::chrono_literals;
 namespace io
 {
 HikRobot::HikRobot(double exposure_ms, double gain, const std::string & vid_pid)
-: exposure_us_(exposure_ms * 1e3), gain_(gain), queue_(1), daemon_quit_(false), vid_(-1), pid_(-1)
+: exposure_us_(exposure_ms * 1e3),
+  gain_(gain),
+  daemon_quit_(false),
+  handle_(nullptr),
+  capturing_(false),
+  capture_quit_(false),
+  queue_(1),
+  vid_(-1),
+  pid_(-1),
+  sdk_initialized_(false)
 {
   set_vid_pid(vid_pid);
   if (libusb_init(NULL)) tools::logger()->warn("Unable to init libusb!");
+
+  const auto ret = MV_CC_Initialize();
+  if (ret != MV_OK)
+    tools::logger()->warn("MV_CC_Initialize failed: {:#x}", ret);
+  else
+    sdk_initialized_ = true;
 
   daemon_thread_ = std::thread{[this] {
     tools::logger()->info("HikRobot's daemon thread started.");
@@ -39,6 +54,10 @@ HikRobot::~HikRobot()
 {
   daemon_quit_ = true;
   if (daemon_thread_.joinable()) daemon_thread_.join();
+  if (sdk_initialized_) {
+    const auto ret = MV_CC_Finalize();
+    if (ret != MV_OK) tools::logger()->warn("MV_CC_Finalize failed: {:#x}", ret);
+  }
   tools::logger()->info("HikRobot destructed.");
 }
 
@@ -59,6 +78,11 @@ void HikRobot::capture_start()
 {
   capturing_ = false;
   capture_quit_ = false;
+
+  if (!sdk_initialized_) {
+    tools::logger()->warn("Skip HikRobot capture start because MVS SDK is not initialized.");
+    return;
+  }
 
   unsigned int ret;
 
@@ -164,25 +188,20 @@ void HikRobot::capture_stop()
   capture_quit_ = true;
   if (capture_thread_.joinable()) capture_thread_.join();
 
+  if (!handle_) return;
+
   unsigned int ret;
 
   ret = MV_CC_StopGrabbing(handle_);
-  if (ret != MV_OK) {
-    tools::logger()->warn("MV_CC_StopGrabbing failed: {:#x}", ret);
-    return;
-  }
+  if (ret != MV_OK) tools::logger()->warn("MV_CC_StopGrabbing failed: {:#x}", ret);
 
   ret = MV_CC_CloseDevice(handle_);
-  if (ret != MV_OK) {
-    tools::logger()->warn("MV_CC_CloseDevice failed: {:#x}", ret);
-    return;
-  }
+  if (ret != MV_OK) tools::logger()->warn("MV_CC_CloseDevice failed: {:#x}", ret);
 
   ret = MV_CC_DestroyHandle(handle_);
-  if (ret != MV_OK) {
-    tools::logger()->warn("MV_CC_DestroyHandle failed: {:#x}", ret);
-    return;
-  }
+  if (ret != MV_OK) tools::logger()->warn("MV_CC_DestroyHandle failed: {:#x}", ret);
+
+  handle_ = nullptr;
 }
 
 void HikRobot::set_float_value(const std::string & name, double value)

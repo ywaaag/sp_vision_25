@@ -16,9 +16,18 @@ add_library(io STATIC
 )
 
 # hikrobot
-target_include_directories(io PUBLIC hikrobot/include)
+if(EXISTS "/opt/MVS/include/MvCameraControl.h")
+  target_include_directories(io PUBLIC /opt/MVS/include)
+else()
+  target_include_directories(io PUBLIC hikrobot/include)
+endif()
+
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
-  target_link_directories(io PUBLIC hikrobot/lib/amd64)
+  if(EXISTS "/opt/MVS/lib/64/libMvCameraControl.so")
+    target_link_directories(io PUBLIC /opt/MVS/lib/64)
+  else()
+    target_link_directories(io PUBLIC hikrobot/lib/amd64)
+  endif()
 elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
   target_link_directories(io PUBLIC hikrobot/lib/arm64)
 else()

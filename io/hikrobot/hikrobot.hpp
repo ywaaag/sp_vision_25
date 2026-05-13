@@ -40,6 +40,7 @@ private:
   tools::ThreadSafeQueue<CameraData> queue_;
 
   int vid_, pid_;
+  bool sdk_initialized_;
 
   void capture_start();
   void capture_stop();
