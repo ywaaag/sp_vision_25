@@ -16,6 +16,37 @@ namespace
 constexpr double PI = 3.14159265358979323846;
 constexpr double DEG_TO_RAD = PI / 180.0;
 constexpr double RAD_TO_DEG = 180.0 / PI;
+
+Eigen::Vector4d select_auto_aim_xyza(const Target & target)
+{
+  Eigen::VectorXd ekf_x = target.ekf_x();
+  const std::vector<Eigen::Vector4d> armor_xyza_list = target.armor_xyza_list();
+
+  if (target.name == ArmorName::outpost) {
+    const double center_yaw = std::atan2(ekf_x[2], ekf_x[0]);
+    constexpr double COMING_ANGLE = 70.0 * DEG_TO_RAD;
+    constexpr double LEAVING_ANGLE = 30.0 * DEG_TO_RAD;
+
+    for (const auto & xyza : armor_xyza_list) {
+      const double delta_angle = tools::limit_rad(xyza[3] - center_yaw);
+      if (std::abs(delta_angle) > COMING_ANGLE) continue;
+      if (ekf_x[7] > 0.0 && delta_angle < LEAVING_ANGLE) return xyza;
+      if (ekf_x[7] < 0.0 && delta_angle > -LEAVING_ANGLE) return xyza;
+    }
+  }
+
+  Eigen::Vector4d selected_xyza = armor_xyza_list.front();
+  double min_dist = 1e10;
+  for (const auto & xyza : armor_xyza_list) {
+    const double dist = xyza.head<2>().norm();
+    if (dist < min_dist) {
+      min_dist = dist;
+      selected_xyza = xyza;
+    }
+  }
+
+  return selected_xyza;
+}
 }  // namespace
 
 Planner::Planner(const std::string & config_path)
@@ -210,24 +241,17 @@ void Planner::setup_pitch_solver(const std::string & config_path)
   pitch_solver_->settings->max_iter = 10;
 }
 
-Eigen::Matrix<double, 2, 1> Planner::aim(const Target & target, double bullet_speed)
+Eigen::Matrix<double, 2, 1> Planner::aim(
+  const Target & target, double bullet_speed, bool update_debug_xyza)
 {
-  Eigen::Vector3d xyz;
-  double yaw;
-  auto min_dist = 1e10;
+  const Eigen::Vector4d xyza = select_auto_aim_xyza(target);
+  const Eigen::Vector3d xyz = xyza.head<3>();
+  const double dist = xyza.head<2>().norm();
 
-  for (auto & xyza : target.armor_xyza_list()) {
-    auto dist = xyza.head<2>().norm();
-    if (dist < min_dist) {
-      min_dist = dist;
-      xyz = xyza.head<3>();
-      yaw = xyza[3];
-    }
-  }
-  debug_xyza = Eigen::Vector4d(xyz.x(), xyz.y(), xyz.z(), yaw);
+  if (update_debug_xyza) debug_xyza = xyza;
 
   auto azim = std::atan2(xyz.y(), xyz.x());
-  auto bullet_traj = tools::Trajectory(bullet_speed, min_dist, xyz.z());
+  auto bullet_traj = tools::Trajectory(bullet_speed, dist, xyz.z());
   if (bullet_traj.unsolvable) throw std::runtime_error("Unsolvable bullet trajectory!");
 
   double yaw_offset;
