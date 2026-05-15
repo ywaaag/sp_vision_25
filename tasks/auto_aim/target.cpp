@@ -26,6 +26,7 @@ Target::Target(
   outpost_height_sums_{0.0, 0.0, 0.0},
   outpost_height_counts_{0, 0, 0},
   outpost_height_order_{0, 0, 0},
+  outpost_center_z_(0.0),
   t_(t)
 {
   auto r = radius;
@@ -65,7 +66,8 @@ Target::Target(double x, double vyaw, double radius, double h)
   outpost_observed_mask_(0),
   outpost_height_sums_{0.0, 0.0, 0.0},
   outpost_height_counts_{0, 0, 0},
-  outpost_height_order_{0, 0, 0}
+  outpost_height_order_{0, 0, 0},
+  outpost_center_z_(0.0)
 {
   Eigen::VectorXd x0{{x, 0, 0, 0, 0, 0, 0, vyaw, radius, 0, h}};
   Eigen::VectorXd P0_dig{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}};
@@ -105,27 +107,29 @@ void Target::predict(double dt)
   };
   // clang-format on
 
-  double v1, v2;
+  double v_xy, v_z, v_angle;
   if (name == ArmorName::outpost) {
-    v1 = 10;
-    v2 = 0.1;
+    v_xy = 10;
+    v_z = use_outpost_staggered_height_model() ? 1e-3 : 10;
+    v_angle = 0.1;
   } else {
-    v1 = 100;
-    v2 = 400;
+    v_xy = 100;
+    v_z = 100;
+    v_angle = 400;
   }
   auto a = dt * dt * dt * dt / 4;
   auto b = dt * dt * dt / 2;
   auto c = dt * dt;
   // clang-format off
   Eigen::MatrixXd Q{
-    {a * v1, b * v1,      0,      0,      0,      0,      0,      0, 0, 0, 0},
-    {b * v1, c * v1,      0,      0,      0,      0,      0,      0, 0, 0, 0},
-    {     0,      0, a * v1, b * v1,      0,      0,      0,      0, 0, 0, 0},
-    {     0,      0, b * v1, c * v1,      0,      0,      0,      0, 0, 0, 0},
-    {     0,      0,      0,      0, a * v1, b * v1,      0,      0, 0, 0, 0},
-    {     0,      0,      0,      0, b * v1, c * v1,      0,      0, 0, 0, 0},
-    {     0,      0,      0,      0,      0,      0, a * v2, b * v2, 0, 0, 0},
-    {     0,      0,      0,      0,      0,      0, b * v2, c * v2, 0, 0, 0},
+    {a * v_xy, b * v_xy,        0,        0,       0,       0,            0,            0, 0, 0, 0},
+    {b * v_xy, c * v_xy,        0,        0,       0,       0,            0,            0, 0, 0, 0},
+    {       0,        0, a * v_xy, b * v_xy,       0,       0,            0,            0, 0, 0, 0},
+    {       0,        0, b * v_xy, c * v_xy,       0,       0,            0,            0, 0, 0, 0},
+    {       0,        0,        0,        0, a * v_z, b * v_z,            0,            0, 0, 0, 0},
+    {       0,        0,        0,        0, b * v_z, c * v_z,            0,            0, 0, 0, 0},
+    {       0,        0,        0,        0,       0,       0, a * v_angle, b * v_angle, 0, 0, 0},
+    {       0,        0,        0,        0,       0,       0, b * v_angle, c * v_angle, 0, 0, 0},
     {     0,      0,      0,      0,      0,      0,      0,      0, 0, 0, 0},
     {     0,      0,      0,      0,      0,      0,      0,      0, 0, 0, 0},
     {     0,      0,      0,      0,      0,      0,      0,      0, 0, 0, 0}
@@ -169,9 +173,6 @@ void Target::update(const Armor & armor)
     Eigen::Vector3d ypd = tools::xyz2ypd(xyza.head(3));
     auto angle_error = std::abs(tools::limit_rad(armor.ypr_in_world[0] - xyza[3])) +
                        std::abs(tools::limit_rad(armor.ypd_in_world[0] - ypd[0]));
-    if (use_outpost_staggered_height_model()) {
-      angle_error += std::abs(tools::limit_rad(armor.ypd_in_world[1] - ypd[1]));
-    }
 
     if (std::abs(angle_error) < std::abs(min_angle_error)) {
       id = xyza_i_list[i].second;
@@ -199,6 +200,9 @@ void Target::update_ypda(const Armor & armor, int id)
   Eigen::VectorXd R_dig{
     {4e-3, 4e-3, log(std::abs(delta_angle) + 1) + 1,
      log(std::abs(armor.ypd_in_world[2]) + 1) / 200 + 9e-2}};
+  if (use_outpost_staggered_height_model()) {
+    R_dig[1] *= 16.0;
+  }
 
   Eigen::MatrixXd R = R_dig.asDiagonal();
 
@@ -288,6 +292,7 @@ void Target::record_outpost_observation(int id, const Armor & armor)
 
   std::array<std::pair<double, int>, OUTPOST_ARMOR_COUNT> avg_height_and_id{};
   for (int i = 0; i < OUTPOST_ARMOR_COUNT; ++i) {
+    if (outpost_height_counts_[i] < OUTPOST_HEIGHT_MIN_SAMPLES) return;
     const double avg_z = outpost_height_sums_[i] / std::max(1, outpost_height_counts_[i]);
     avg_height_and_id[i] = {avg_z, i};
   }
@@ -295,16 +300,43 @@ void Target::record_outpost_observation(int id, const Armor & armor)
     avg_height_and_id.begin(), avg_height_and_id.end(),
     [](const auto & lhs, const auto & rhs) { return lhs.first < rhs.first; });
 
+  const double low_to_mid = avg_height_and_id[1].first - avg_height_and_id[0].first;
+  const double mid_to_high = avg_height_and_id[2].first - avg_height_and_id[1].first;
+  constexpr double MIN_HEIGHT_STEP = 0.06;
+  constexpr double MAX_HEIGHT_STEP = 0.20;
+  constexpr double MAX_STEP_DIFF = 0.08;
+  if (
+    low_to_mid < MIN_HEIGHT_STEP || low_to_mid > MAX_HEIGHT_STEP ||
+    mid_to_high < MIN_HEIGHT_STEP || mid_to_high > MAX_HEIGHT_STEP ||
+    std::abs(low_to_mid - mid_to_high) > MAX_STEP_DIFF) {
+    return;
+  }
+
   outpost_height_order_.fill(0);
   outpost_height_order_[avg_height_and_id[0].second] = -1;
   outpost_height_order_[avg_height_and_id[1].second] = 0;
   outpost_height_order_[avg_height_and_id[2].second] = 1;
   outpost_height_ready_ = true;
 
-  ekf_.x[4] = avg_height_and_id[1].first;
+  outpost_center_z_ =
+    (avg_height_and_id[0].first + avg_height_and_id[1].first + avg_height_and_id[2].first) /
+    OUTPOST_ARMOR_COUNT;
+  ekf_.x[4] = outpost_center_z_;
+  ekf_.x[5] = 0.0;
+  for (int i = 0; i < ekf_.P.rows(); ++i) {
+    ekf_.P(4, i) = 0.0;
+    ekf_.P(i, 4) = 0.0;
+    ekf_.P(5, i) = 0.0;
+    ekf_.P(i, 5) = 0.0;
+  }
+  ekf_.P(4, 4) = 1e-4;
+  ekf_.P(5, 5) = 1e-3;
   tools::logger()->info(
-    "[Target] Outpost staggered height model activated, middle z = {:.3f}",
-    avg_height_and_id[1].first);
+    "[Target] Outpost height model activated, center_z = {:.3f}, avg_z=[{:.3f},{:.3f},{:.3f}], "
+    "order=[{},{},{}]",
+    outpost_center_z_, avg_height_and_id[0].first, avg_height_and_id[1].first,
+    avg_height_and_id[2].first, outpost_height_order_[0], outpost_height_order_[1],
+    outpost_height_order_[2]);
 }
 
 double Target::outpost_height_offset(int id) const

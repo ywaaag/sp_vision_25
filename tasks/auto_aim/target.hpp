@@ -47,8 +47,9 @@ public:
   bool checkinit();
 
 private:
-  static constexpr double OUTPOST_ARMOR_HEIGHT_STEP = 0.1;
+  static constexpr double OUTPOST_ARMOR_HEIGHT_STEP = 0.12;
   static constexpr int OUTPOST_ARMOR_COUNT = 3;
+  static constexpr int OUTPOST_HEIGHT_MIN_SAMPLES = 30;
 
   int armor_num_;
   int switch_count_;
@@ -60,6 +61,7 @@ private:
   std::array<double, OUTPOST_ARMOR_COUNT> outpost_height_sums_;
   std::array<int, OUTPOST_ARMOR_COUNT> outpost_height_counts_;
   std::array<int, OUTPOST_ARMOR_COUNT> outpost_height_order_;
+  double outpost_center_z_;
 
   tools::ExtendedKalmanFilter ekf_;
   std::chrono::steady_clock::time_point t_;
