@@ -49,6 +49,7 @@ public:
 private:
   static constexpr double OUTPOST_ARMOR_HEIGHT_STEP = 0.12;
   static constexpr int OUTPOST_ARMOR_COUNT = 3;
+  static constexpr int OUTPOST_HEIGHT_MIN_SAMPLES = 30;
 
   int armor_num_;
   int switch_count_;
@@ -56,14 +57,11 @@ private:
 
   bool is_switch_, is_converged_;
   bool outpost_height_ready_;
-  bool outpost_fixed_model_ready_;
   int outpost_observed_mask_;
   std::array<double, OUTPOST_ARMOR_COUNT> outpost_height_sums_;
   std::array<int, OUTPOST_ARMOR_COUNT> outpost_height_counts_;
   std::array<int, OUTPOST_ARMOR_COUNT> outpost_height_order_;
-  Eigen::Vector3d outpost_fixed_center_;
-  double outpost_fixed_radius_;
-  double outpost_fixed_w_;
+  double outpost_center_z_;
 
   tools::ExtendedKalmanFilter ekf_;
   std::chrono::steady_clock::time_point t_;
@@ -74,7 +72,6 @@ private:
   bool use_outpost_staggered_height_model() const;
   void record_outpost_observation(int id, const Armor & armor);
   double outpost_height_offset(int id) const;
-  void apply_outpost_fixed_model();
   Eigen::Vector3d h_armor_xyz(const Eigen::VectorXd & x, int id) const;
   Eigen::MatrixXd h_jacobian(const Eigen::VectorXd & x, int id) const;
 };
