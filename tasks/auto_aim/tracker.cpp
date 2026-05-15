@@ -23,6 +23,10 @@ Tracker::Tracker(const std::string & config_path, Solver & solver)
   min_detect_count_ = yaml["min_detect_count"].as<int>();
   max_temp_lost_count_ = yaml["max_temp_lost_count"].as<int>();
   outpost_max_temp_lost_count_ = yaml["outpost_max_temp_lost_count"].as<int>();
+  outpost_bad_converge_threshold_ =
+    yaml["outpost_bad_converge_threshold"]
+      ? yaml["outpost_bad_converge_threshold"].as<double>()
+      : 0.6;
   normal_temp_lost_count_ = max_temp_lost_count_;
 }
 
@@ -36,8 +40,12 @@ std::list<Target> Tracker::track(
 
   // 时间间隔过长，说明可能发生了相机离线
   if (state_ != "lost" && dt > 0.1) {
-    tools::logger()->warn("[Tracker] Large dt: {:.3f}s, reset target.", dt);
-    state_ = "lost";
+    if (target_.name == ArmorName::outpost) {
+      tools::logger()->warn("[Tracker] Large dt: {:.3f}s, keep outpost target.", dt);
+    } else {
+      tools::logger()->warn("[Tracker] Large dt: {:.3f}s, reset target.", dt);
+      state_ = "lost";
+    }
   }
   // 过滤掉非我方装甲板
   armors.remove_if([&](const auto_aim::Armor & a) { return a.color != enemy_color_; });
@@ -81,13 +89,8 @@ std::list<Target> Tracker::track(
     return {};
   }
 
-  // 收敛效果检测：
-  if (
-    target_.name != ArmorName::outpost &&
-    std::accumulate(
-      target_.ekf().recent_nis_failures.begin(), target_.ekf().recent_nis_failures.end(), 0) >=
-      (0.4 * target_.ekf().window_size)) {
-    tools::logger()->debug("[Target] Bad Converge Found!");
+  // 收敛效果检测：前哨战不完全豁免，但阈值比普通目标宽。
+  if (bad_converge()) {
     state_ = "lost";
     return {};
   }
@@ -113,8 +116,12 @@ std::tuple<omniperception::DetectionResult, std::list<Target>> Tracker::track(
 
   // 时间间隔过长，说明可能发生了相机离线
   if (state_ != "lost" && dt > 0.1) {
-    tools::logger()->warn("[Tracker] Large dt: {:.3f}s, reset target.", dt);
-    state_ = "lost";
+    if (target_.name == ArmorName::outpost) {
+      tools::logger()->warn("[Tracker] Large dt: {:.3f}s, keep outpost target.", dt);
+    } else {
+      tools::logger()->warn("[Tracker] Large dt: {:.3f}s, reset target.", dt);
+      state_ = "lost";
+    }
   }
 
   // 优先选择靠近图像中心的装甲板
@@ -174,6 +181,11 @@ std::tuple<omniperception::DetectionResult, std::list<Target>> Tracker::track(
       ARMOR_NAMES[target_.name], target_.ekf_x()[8], target_.ekf_x()[9], target_.ekf_x()[7]);
     state_ = "lost";
     return {switch_target, {}};  // 返回switch_target和空的targets
+  }
+
+  if (bad_converge()) {
+    state_ = "lost";
+    return {switch_target, {}};
   }
 
   if (state_ == "lost") return {switch_target, {}};  // 返回switch_target和空的targets
@@ -241,6 +253,26 @@ void Tracker::state_machine(bool found)
       }
     }
   }
+}
+
+bool Tracker::bad_converge() const
+{
+  if (state_ == "lost") return false;
+
+  const auto & failures = target_.ekf().recent_nis_failures;
+  if (failures.size() < target_.ekf().window_size) return false;
+
+  const int recent_failures = std::accumulate(failures.begin(), failures.end(), 0);
+  const double failure_rate = static_cast<double>(recent_failures) / failures.size();
+  const double threshold =
+    target_.name == ArmorName::outpost ? outpost_bad_converge_threshold_ : 0.4;
+  if (failure_rate < threshold) return false;
+
+  tools::logger()->warn(
+    "[Tracker] Bad converge, reset target. name={} nis_fail_rate={:.2f} threshold={:.2f} "
+    "w={:.3f}",
+    ARMOR_NAMES[target_.name], failure_rate, threshold, target_.ekf_x()[7]);
+  return true;
 }
 
 bool Tracker::set_target(std::list<Armor> & armors, std::chrono::steady_clock::time_point t)
