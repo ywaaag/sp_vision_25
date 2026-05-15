@@ -57,6 +57,7 @@ can_interface: "can0"
 min_detect_count: 5
 max_temp_lost_count: 15
 outpost_max_temp_lost_count: 150
+outpost_bad_converge_threshold: 0.6
 
 #####-----aimer参数-----#####
 yaw_offset: -2.5 # degree -2.5
