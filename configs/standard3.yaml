@@ -8,7 +8,7 @@ yolo11_model_path: assets/yolo11.xml
 yolov8_model_path: assets/yolov8.xml
 yolov5_model_path: assets/yolov5.xml
 device: CPU
-min_confidence: 0.4
+min_confidence: 0.8
 use_traditional: false
 
 #####-----ROI-----#####
@@ -54,12 +54,12 @@ outpost_bad_converge_threshold: 0.55
 #####-----aimer参数-----#####
 yaw_offset: 1.2 # degree -2.5
 pitch_offset: -1.2 # degree 2
-comming_angle: 70 # degree
+comming_angle: 60 # degree
 leaving_angle: 30 # degree
 outpost_comming_angle: 55 # degree
 outpost_leaving_angle: 15 # degree
 decision_speed: 7 # rad/s
-high_speed_delay_time: 0.065 # s
+high_speed_delay_time: 0.030 # s
 low_speed_delay_time: 0.022 # s planner use this value
 
 #####-----shooter参数-----#####
