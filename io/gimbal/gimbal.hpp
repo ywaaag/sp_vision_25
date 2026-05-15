@@ -91,7 +91,7 @@ struct RefereePackage1
   SentryInfoPackage::data sentry_info_data;
   RfidStatusPackage::data rfid_status_data;
 
-  uint8_t reserved[35];
+  uint8_t reserved[33];
   uint8_t tail;
   uint16_t check_sum;
 } __attribute__((packed));

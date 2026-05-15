@@ -212,6 +212,7 @@ struct SentryInfoPackage
     uint8_t disengaged_state;
     uint8_t current_state;
     uint8_t ally_power_rune_state;
+    uint16_t projectile_allowance_17mm;
   } __attribute__((packed)) ;
 
   uint16_t crc16;

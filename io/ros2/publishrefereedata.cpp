@@ -137,6 +137,7 @@ void PublishRefereeData::publishSentryInfo(const SentryInfoPackage::data & pkg)
   sentry_info_msg_.disengaged_state = pkg.disengaged_state;
   sentry_info_msg_.current_state = pkg.current_state;
   sentry_info_msg_.ally_power_rune_state = pkg.ally_power_rune_state;
+  sentry_info_msg_.projectile_allowance_17mm = pkg.projectile_allowance_17mm;
 
   sentry_info_pub_->publish(sentry_info_msg_);
 }

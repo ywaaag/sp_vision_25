@@ -355,18 +355,6 @@ int main(int argc, char * argv[])
 
   auto ros_thread = std::thread([&]() {
     while (!quit) {
-      ros2.publish(gimbal.game_status());
-      ros2.publish(gimbal.event_data());
-      ros2.publish(gimbal.robot_status());
-      ros2.publish(gimbal.hurt_data());
-      ros2.publish(gimbal.sentry_info());
-      ros2.publish(gimbal.rfid_status());
-      ros2.publish(gimbal.robot_pos());
-      ros2.publish(gimbal.ground_robot_pos());
-      ros2.publish(gimbal.game_robot_hp());
-      auto gs = gimbal.state();
-      ros2.publish(gs.yaw, gs.pitch, gs.yaw_diff);
-
       ros2.spin_some();
 
       gimbal.send(
