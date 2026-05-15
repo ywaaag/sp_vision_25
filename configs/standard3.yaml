@@ -54,11 +54,13 @@ outpost_bad_converge_threshold: 0.55
 #####-----aimer参数-----#####
 yaw_offset: 1.2 # degree -2.5
 pitch_offset: -1.2 # degree 2
-comming_angle: 55 # degree
-leaving_angle: 15 # degree
+comming_angle: 70 # degree
+leaving_angle: 30 # degree
+outpost_comming_angle: 55 # degree
+outpost_leaving_angle: 15 # degree
 decision_speed: 7 # rad/s
 high_speed_delay_time: 0.065 # s
-low_speed_delay_time: 0.085 # s planner use this value
+low_speed_delay_time: 0.022 # s planner use this value
 
 #####-----shooter参数-----#####
 first_tolerance: 3 # 近距离射击容差，degree

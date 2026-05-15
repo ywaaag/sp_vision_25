@@ -17,22 +17,25 @@ constexpr double PI = 3.14159265358979323846;
 constexpr double DEG_TO_RAD = PI / 180.0;
 constexpr double RAD_TO_DEG = 180.0 / PI;
 
-Eigen::Vector4d select_auto_aim_xyza(const Target & target)
+Eigen::Vector4d select_auto_aim_xyza(
+  const Target & target, double comming_angle, double leaving_angle, double outpost_comming_angle,
+  double outpost_leaving_angle)
 {
   Eigen::VectorXd ekf_x = target.ekf_x();
   const std::vector<Eigen::Vector4d> armor_xyza_list = target.armor_xyza_list();
 
   if (target.name == ArmorName::outpost) {
-    const double center_yaw = std::atan2(ekf_x[2], ekf_x[0]);
-    constexpr double COMING_ANGLE = 70.0 * DEG_TO_RAD;
-    constexpr double LEAVING_ANGLE = 30.0 * DEG_TO_RAD;
+    comming_angle = outpost_comming_angle;
+    leaving_angle = outpost_leaving_angle;
+  }
 
-    for (const auto & xyza : armor_xyza_list) {
-      const double delta_angle = tools::limit_rad(xyza[3] - center_yaw);
-      if (std::abs(delta_angle) > COMING_ANGLE) continue;
-      if (ekf_x[7] > 0.0 && delta_angle < LEAVING_ANGLE) return xyza;
-      if (ekf_x[7] < 0.0 && delta_angle > -LEAVING_ANGLE) return xyza;
-    }
+  const double center_yaw = std::atan2(ekf_x[2], ekf_x[0]);
+
+  for (const auto & xyza : armor_xyza_list) {
+    const double delta_angle = tools::limit_rad(xyza[3] - center_yaw);
+    if (std::abs(delta_angle) > comming_angle) continue;
+    if (ekf_x[7] > 0.0 && delta_angle < leaving_angle) return xyza;
+    if (ekf_x[7] < 0.0 && delta_angle > -leaving_angle) return xyza;
   }
 
   Eigen::Vector4d selected_xyza = armor_xyza_list.front();
@@ -47,6 +50,7 @@ Eigen::Vector4d select_auto_aim_xyza(const Target & target)
 
   return selected_xyza;
 }
+
 }  // namespace
 
 Planner::Planner(const std::string & config_path)
@@ -55,6 +59,10 @@ Planner::Planner(const std::string & config_path)
   yaw_offset_ = tools::read<double>(yaml, "yaw_offset") * DEG_TO_RAD;
   pitch_offset_ = tools::read<double>(yaml, "pitch_offset") * DEG_TO_RAD;
   fire_thresh_ = tools::read<double>(yaml, "fire_thresh");
+  comming_angle_ = tools::read<double>(yaml, "comming_angle") * DEG_TO_RAD;
+  leaving_angle_ = tools::read<double>(yaml, "leaving_angle") * DEG_TO_RAD;
+  outpost_comming_angle_ = tools::read<double>(yaml, "outpost_comming_angle") * DEG_TO_RAD;
+  outpost_leaving_angle_ = tools::read<double>(yaml, "outpost_leaving_angle") * DEG_TO_RAD;
   decision_speed_ = tools::read<double>(yaml, "decision_speed");
   high_speed_delay_time_ = tools::read<double>(yaml, "high_speed_delay_time");
   low_speed_delay_time_ = tools::read<double>(yaml, "low_speed_delay_time");
@@ -244,7 +252,20 @@ void Planner::setup_pitch_solver(const std::string & config_path)
 Eigen::Matrix<double, 2, 1> Planner::aim(
   const Target & target, double bullet_speed, bool update_debug_xyza)
 {
-  const Eigen::Vector4d xyza = select_auto_aim_xyza(target);
+  double comming_angle;
+  double leaving_angle;
+  double outpost_comming_angle;
+  double outpost_leaving_angle;
+  {
+    std::lock_guard<std::mutex> lock(params_mutex_);
+    comming_angle = comming_angle_;
+    leaving_angle = leaving_angle_;
+    outpost_comming_angle = outpost_comming_angle_;
+    outpost_leaving_angle = outpost_leaving_angle_;
+  }
+
+  const Eigen::Vector4d xyza = select_auto_aim_xyza(
+    target, comming_angle, leaving_angle, outpost_comming_angle, outpost_leaving_angle);
   const Eigen::Vector3d xyz = xyza.head<3>();
   const double dist = xyza.head<2>().norm();
 

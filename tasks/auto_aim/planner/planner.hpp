@@ -61,6 +61,10 @@ private:
   double pitch_offset_;
   double fire_thresh_;
   double low_speed_delay_time_, high_speed_delay_time_, decision_speed_;
+  double comming_angle_;
+  double leaving_angle_;
+  double outpost_comming_angle_;
+  double outpost_leaving_angle_;
 
   TinySolver * yaw_solver_;
   TinySolver * pitch_solver_;
