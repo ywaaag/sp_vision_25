@@ -111,6 +111,8 @@ std::string Gimbal::str(GimbalMode mode) const
       return "IDLE";
     case GimbalMode::AUTO_AIM:
       return "AUTO_AIM";
+    case GimbalMode::OUTPOST:
+      return "OUTPOST";
     case GimbalMode::SMALL_BUFF:
       return "SMALL_BUFF";
     case GimbalMode::BIG_BUFF:
@@ -159,21 +161,22 @@ Eigen::Quaterniond Gimbal::q(std::chrono::steady_clock::time_point t)
 /**
  * @brief 
  * 
- * @param VisionToGimbal 
+ * @param vision_to_gimbal
  * @note 发送自瞄下行包
  * 
  */
 
-void Gimbal::send(io::VisionToGimbal VisionToGimbal)
+void Gimbal::send(io::VisionToGimbal vision_to_gimbal)
 {
-  tx_data_v_.mode = VisionToGimbal.mode;
-  tx_data_v_.yaw = VisionToGimbal.yaw;
-  tx_data_v_.yaw_vel = VisionToGimbal.yaw_vel;
-  tx_data_v_.yaw_acc = VisionToGimbal.yaw_acc;
-  tx_data_v_.pitch = VisionToGimbal.pitch;
-  tx_data_v_.pitch_vel = VisionToGimbal.pitch_vel;
-  tx_data_v_.pitch_acc = VisionToGimbal.pitch_acc;
-  tx_data_v_.time_stamp = VisionToGimbal.time_stamp;
+  tx_data_v_ = VisionToGimbal{};
+  tx_data_v_.mode = vision_to_gimbal.mode;
+  tx_data_v_.yaw = vision_to_gimbal.yaw;
+  tx_data_v_.yaw_vel = vision_to_gimbal.yaw_vel;
+  tx_data_v_.yaw_acc = vision_to_gimbal.yaw_acc;
+  tx_data_v_.pitch = vision_to_gimbal.pitch;
+  tx_data_v_.pitch_vel = vision_to_gimbal.pitch_vel;
+  tx_data_v_.pitch_acc = vision_to_gimbal.pitch_acc;
+  tx_data_v_.time_stamp = vision_to_gimbal.time_stamp;
 
   tools::append_check_sum(
     reinterpret_cast<uint8_t *>(&tx_data_v_), sizeof(tx_data_v_));
@@ -184,20 +187,23 @@ void Gimbal::send(io::VisionToGimbal VisionToGimbal)
 /**
  * @brief 
  * 
- * @param NavToGimbal 
+ * @param nav_to_gimbal
  * @note 发送导航下行包
  * 
  */
 
-void Gimbal::send(io::NavToGimbal NavToGimbal)
+void Gimbal::send(io::NavToGimbal nav_to_gimbal)
 {
-  tx_data_n_.mode = NavToGimbal.mode;
-  tx_data_n_.chassis_status = NavToGimbal.chassis_status;
-  tx_data_n_.sentry_status = NavToGimbal.sentry_status;
-  tx_data_n_.vx = NavToGimbal.vx;
-  tx_data_n_.vy = NavToGimbal.vy;
-  tx_data_n_.vyaw = NavToGimbal.vyaw;
-  tx_data_n_.time_stamp = NavToGimbal.time_stamp;
+  tx_data_n_ = NavToGimbal{};
+  tx_data_n_.target_mode = nav_to_gimbal.target_mode;
+  tx_data_n_.chassis_status = nav_to_gimbal.chassis_status;
+  tx_data_n_.sentry_status = nav_to_gimbal.sentry_status;
+  tx_data_n_.vx = nav_to_gimbal.vx;
+  tx_data_n_.vy = nav_to_gimbal.vy;
+  tx_data_n_.vyaw = nav_to_gimbal.vyaw;
+  tx_data_n_.terrain_status = nav_to_gimbal.terrain_status;
+  tx_data_n_.bump_status = nav_to_gimbal.bump_status;
+  tx_data_n_.time_stamp = nav_to_gimbal.time_stamp;
 
   tools::append_check_sum(
     reinterpret_cast<uint8_t *>(&tx_data_n_), sizeof(tx_data_n_));
@@ -224,6 +230,7 @@ void Gimbal::send(
   bool control, bool fire, float yaw, float yaw_vel, float yaw_acc, float pitch, float pitch_vel,
   float pitch_acc)
 {
+  tx_data_v_ = VisionToGimbal{};
   tx_data_v_.mode = control ? (fire ? 2 : 1) : 0;
   tx_data_v_.pitch = pitch;
   tx_data_v_.pitch_vel = pitch_vel;
@@ -244,7 +251,7 @@ void Gimbal::send(
 /**
  * @brief 
  * 
- * @param mode 
+ * @param target_mode
  * @param chassis_status 
  * @param sentry_status 
  * @param vx 
@@ -254,15 +261,25 @@ void Gimbal::send(
  */
 
 void Gimbal::send(
-  uint8_t mode, uint8_t chassis_status, uint8_t sentry_status, float vx,
+  uint8_t target_mode, uint8_t chassis_status, uint8_t sentry_status, float vx,
   float vy)
 {
-  tx_data_n_.mode = mode;
+  send(target_mode, chassis_status, sentry_status, vx, vy, 0.0f, 0, 0);
+}
+
+void Gimbal::send(
+  uint8_t target_mode, uint8_t chassis_status, uint8_t sentry_status, float vx, float vy,
+  float vyaw, uint8_t terrain_status, uint8_t bump_status)
+{
+  tx_data_n_ = NavToGimbal{};
+  tx_data_n_.target_mode = target_mode;
   tx_data_n_.chassis_status = chassis_status;
   tx_data_n_.sentry_status = sentry_status;
   tx_data_n_.vx = vx;
   tx_data_n_.vy = vy;
-  tx_data_n_.vyaw = 0.0f;  // 导航包中暂时不使用yaw，填0
+  tx_data_n_.vyaw = vyaw;
+  tx_data_n_.terrain_status = terrain_status;
+  tx_data_n_.bump_status = bump_status;
   tx_data_n_.time_stamp = std::chrono::duration_cast<std::chrono::milliseconds>(
                         std::chrono::steady_clock::now().time_since_epoch())
                         .count();
@@ -339,13 +356,13 @@ void Gimbal::read_thread()
       continue;
     }
 
-    if (rx_data_.head[0] != 0x5A) {
+    if (rx_data_.head[0] != SOF_HEAD) {
       mark_error();
       continue;
     }
 
     switch (rx_data_.head[1]) {
-      case 0x01:  {
+      case RECEIVE_VISION_ID:  {
         auto t = std::chrono::steady_clock::now();
 
         if (!read(
@@ -355,7 +372,7 @@ void Gimbal::read_thread()
           continue;
         }
 
-        if (rx_data_.tail != 0x55) {
+        if (rx_data_.tail != SOF_TAIL) {
           tools::logger()->warn("[Gimbal] Invalid tail: {:02X}", rx_data_.tail);
           mark_error();
           continue;
@@ -396,9 +413,12 @@ void Gimbal::read_thread()
             mode_ = GimbalMode::AUTO_AIM;
             break;
           case 2:
-            mode_ = GimbalMode::SMALL_BUFF;
+            mode_ = GimbalMode::OUTPOST;
             break;
           case 3:
+            mode_ = GimbalMode::SMALL_BUFF;
+            break;
+          case 4:
             mode_ = GimbalMode::BIG_BUFF;
             break;
           default:
@@ -409,9 +429,9 @@ void Gimbal::read_thread()
         
         break;
       }
-      case 0x02:  {
-        referee_package1_.head[0] = 0x5A;
-        referee_package1_.head[1] = 0x02;
+      case RECEIVE_REFEREE1_ID:  {
+        referee_package1_.head[0] = SOF_HEAD;
+        referee_package1_.head[1] = RECEIVE_REFEREE1_ID;
 
         if (!read(
               reinterpret_cast<uint8_t *>(&referee_package1_) + sizeof(referee_package1_.head),
@@ -420,7 +440,7 @@ void Gimbal::read_thread()
           continue;
         }
 
-        if (referee_package1_.tail != 0x55) {
+        if (referee_package1_.tail != SOF_TAIL) {
           tools::logger()->warn("[Gimbal] Invalid tail in referee package 1: {:02X}", referee_package1_.tail);
           mark_error();
           continue;
@@ -437,9 +457,9 @@ void Gimbal::read_thread()
         clear_error();
         break;
       }
-      case 0x03: {
-        referee_package2_.head[0] = 0x5A;
-        referee_package2_.head[1] = 0x03;
+      case RECEIVE_REFEREE2_ID: {
+        referee_package2_.head[0] = SOF_HEAD;
+        referee_package2_.head[1] = RECEIVE_REFEREE2_ID;
 
         if (!read(
               reinterpret_cast<uint8_t *>(&referee_package2_) + sizeof(referee_package2_.head),
@@ -448,7 +468,7 @@ void Gimbal::read_thread()
           continue;
         }
 
-        if (referee_package2_.tail != 0x55) {
+        if (referee_package2_.tail != SOF_TAIL) {
           tools::logger()->warn("[Gimbal] Invalid tail in referee package 2: {:02X}", referee_package2_.tail);
           mark_error();
           continue;

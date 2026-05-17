@@ -22,9 +22,17 @@
 namespace io
 {
 const uint8_t SOF_REFREE_HEAD = 0xA5;
-const uint8_t SOF_VISION_HEAD = 0x5A;
-const uint8_t SOF_SEND = 0x5A;
+const uint8_t SOF_HEAD = 0x5A;
 const uint8_t SOF_TAIL = 0x55;
+const uint8_t RECEIVE_VISION_ID = 0x01;
+const uint8_t RECEIVE_REFEREE1_ID = 0x02;
+const uint8_t RECEIVE_REFEREE2_ID = 0x03;
+const uint8_t SEND_NAV_ID = 0x55;
+
+const uint8_t SOF_VISION_HEAD = SOF_HEAD;
+const uint8_t SOF_SEND = SOF_HEAD;
+const uint16_t PACKAGE_LENGTH = 64;
+const float RECEIVE_TIMEOUT = 0.0f;
 
 struct HeaderFrame
 {
@@ -219,6 +227,111 @@ struct SentryInfoPackage
 } __attribute__((packed));
 
 /********************************************************/
+/* Serial packages                                      */
+/********************************************************/
+
+// 视觉上行包
+struct __attribute__((packed)) GimbalToVision
+{
+  uint8_t head[2] = {SOF_HEAD, RECEIVE_VISION_ID};
+  float DWT_stamp;  // DWT计数器，单位为微秒
+
+  uint8_t mode;  // 0: 空闲, 1: 自瞄, 2: 小符, 3: 大符
+  float q[4];    // wxyz顺序
+  float pitch;
+  float pitch_vel;
+  float yaw;
+  float yaw_vel;
+  float yaw_diff;
+  float bullet_speed;
+  uint16_t bullet_count;  // 子弹累计发送次数
+
+  uint8_t reserved[12];
+  uint8_t tail = SOF_TAIL;
+  uint16_t check_sum;
+};
+
+// 裁判系统包
+struct RefereePackage1
+{
+  uint8_t head[2];
+  float DWT_stamp;  // DWT计数器，单位为微秒
+
+  GameStatusPackage::data game_status_data;
+  EventDataPackage::data event_data;
+  RobotStatusPackage::data robot_status_data;
+  HurtDataPackage::data hurt_data;
+  SentryInfoPackage::data sentry_info_data;
+  RfidStatusPackage::data rfid_status_data;
+
+  uint8_t reserved[33];
+  uint8_t tail;
+  uint16_t check_sum;
+} __attribute__((packed));
+
+// 裁判系统包
+struct RefereePackage2
+{
+  uint8_t head[2];
+  float DWT_stamp;  // DWT计数器，单位为微秒
+
+  RobotPosPackage::data robot_pos_data;
+  GroundRobotPositionPackage::data ground_robot_pos_data;
+  GameRobotHpPackage::data game_robot_hp_data;
+
+  uint8_t reserved[3];
+  uint8_t tail;
+  uint16_t check_sum;
+} __attribute__((packed));
+
+// 自瞄下行包
+struct __attribute__((packed)) VisionToGimbal
+{
+  uint8_t head[2] = {SOF_HEAD, RECEIVE_VISION_ID};
+  uint64_t time_stamp;
+
+  uint8_t mode;  // 0: 不控制, 1: 控制云台但不开火，2: 控制云台且开火
+  float pitch;
+  float pitch_vel;
+  float pitch_acc;
+  float yaw;
+  float yaw_vel;
+  float yaw_acc;
+
+  uint8_t reserved[26];
+  uint16_t check_sum;
+  uint8_t tail = SOF_TAIL;
+};
+
+// 导航下行包
+struct __attribute__((packed)) NavToGimbal
+{
+  uint8_t head[2] = {SOF_HEAD, RECEIVE_REFEREE1_ID};
+  uint64_t time_stamp;
+
+  uint8_t chassis_status;
+  uint8_t sentry_status;
+  uint8_t target_mode;  // scanmode: 0 空闲, 1 自瞄装甲板, 2 前哨站, 3 小符, 4 大符
+
+  float vx;
+  float vy;
+  float vyaw;
+
+  uint8_t terrain_status;
+  uint8_t bump_status;
+
+  uint8_t reserved[34];
+  uint16_t check_sum;
+  uint8_t tail = SOF_TAIL;
+};
+
+static_assert(sizeof(GimbalToVision) == PACKAGE_LENGTH, "GimbalToVision must be 64 bytes");
+static_assert(sizeof(RefereePackage1) == PACKAGE_LENGTH, "RefereePackage1 must be 64 bytes");
+static_assert(sizeof(RefereePackage2) == PACKAGE_LENGTH, "RefereePackage2 must be 64 bytes");
+static_assert(sizeof(VisionToGimbal) == PACKAGE_LENGTH, "VisionToGimbal must be 64 bytes");
+static_assert(sizeof(NavToGimbal) == PACKAGE_LENGTH, "NavToGimbal must be 64 bytes");
+
+/********************************************************/
 /* template                                             */
 /********************************************************/
 
@@ -227,6 +340,15 @@ inline T fromVector(const std::vector<uint8_t> & data)
 {
   T packet;
   std::copy(data.begin(), data.end(), reinterpret_cast<uint8_t *>(&packet));
+  return packet;
+}
+
+template <typename T>
+inline T fromVector(const std::vector<uint8_t> & data, size_t offset)
+{
+  T packet;
+  const uint8_t * src = data.data() + offset;
+  std::copy(src, src + sizeof(T), reinterpret_cast<uint8_t *>(&packet));
   return packet;
 }
 

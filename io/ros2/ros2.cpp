@@ -101,6 +101,21 @@ uint8_t ROS2::getSentryStatus()
     return subscribenavcmd_->getSentryStatus();
 }
 
+uint8_t ROS2::getTargetMode()
+{
+    return subscribenavcmd_->getTargetMode();
+}
+
+uint8_t ROS2::getTerrainStatus()
+{
+    return subscribenavcmd_->getTerrainStatus();
+}
+
+uint8_t ROS2::getBumpStatus()
+{
+    return subscribenavcmd_->getBumpStatus();
+}
+
 float ROS2::getCmdVelX()
 {
     return subscribenavcmd_->getCmdVelX();

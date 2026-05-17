@@ -114,6 +114,13 @@ double usb_target_yaw_trim(TargetSource source)
   }
 }
 
+bool should_track_armor(auto_aim::ArmorName name, io::GimbalMode mode)
+{
+  if (mode == io::GimbalMode::AUTO_AIM) return name != auto_aim::ArmorName::outpost;
+  if (mode == io::GimbalMode::OUTPOST) return name == auto_aim::ArmorName::outpost;
+  return false;
+}
+
 
 std::string armor_number(auto_aim::ArmorName name)
 {
@@ -179,10 +186,12 @@ Eigen::Quaterniond usb_world_q(const Eigen::Quaterniond & q)
   return Eigen::Quaterniond(tools::rotation_matrix(usb_ypr));
 }
 
-std::list<auto_aim::Armor> filter_enemy_armors(
-  std::list<auto_aim::Armor> armors, auto_aim::Color enemy_color)
+std::list<auto_aim::Armor> filter_armors(
+  std::list<auto_aim::Armor> armors, auto_aim::Color enemy_color, io::GimbalMode mode)
 {
-  armors.remove_if([enemy_color](const auto_aim::Armor & armor) { return armor.color != enemy_color; });
+  armors.remove_if([enemy_color, mode](const auto_aim::Armor & armor) {
+    return armor.color != enemy_color || !should_track_armor(armor.name, mode);
+  });
   return armors;
 }
 
@@ -355,10 +364,23 @@ int main(int argc, char * argv[])
 
   auto ros_thread = std::thread([&]() {
     while (!quit) {
+      ros2.publish(gimbal.game_status());
+      ros2.publish(gimbal.event_data());
+      ros2.publish(gimbal.robot_status());
+      ros2.publish(gimbal.hurt_data());
+      ros2.publish(gimbal.sentry_info());
+      ros2.publish(gimbal.rfid_status());
+      ros2.publish(gimbal.robot_pos());
+      ros2.publish(gimbal.ground_robot_pos());
+      ros2.publish(gimbal.game_robot_hp());
+      auto gs = gimbal.state();
+      ros2.publish(gs.yaw, gs.pitch, gs.yaw_diff);
+
       ros2.spin_some();
 
       gimbal.send(
-        0, ros2.getChassisStatus(), ros2.getSentryStatus(), ros2.getCmdVelX(), ros2.getCmdVelY());
+        ros2.getTargetMode(), ros2.getChassisStatus(), ros2.getSentryStatus(), ros2.getCmdVelX(),
+        ros2.getCmdVelY(), ros2.getCmdVelZ(), ros2.getTerrainStatus(), ros2.getBumpStatus());
       std::this_thread::sleep_for(20ms);
     }
   });
@@ -367,6 +389,7 @@ int main(int argc, char * argv[])
   if (use_usb) {
     usb_thread = std::thread([&]() {
       while (!quit) {
+        const auto mode = gimbal.mode();
         cv::Mat usb_left_img;
         cv::Mat usb_right_img;
         std::chrono::steady_clock::time_point usb_left_t;
@@ -394,9 +417,9 @@ int main(int argc, char * argv[])
         }
 
         next_usb_result.left_armors =
-          filter_enemy_armors(usb_yolo.detect(usb_left_img), enemy_color);
+          filter_armors(usb_yolo.detect(usb_left_img), enemy_color, mode);
         next_usb_result.right_armors =
-          filter_enemy_armors(usb_yolo.detect(usb_right_img), enemy_color);
+          filter_armors(usb_yolo.detect(usb_right_img), enemy_color, mode);
 
         solve_armors(next_usb_result.left_armors, usb_left_solver);
         solve_armors(next_usb_result.right_armors, usb_right_solver);
@@ -435,10 +458,11 @@ int main(int argc, char * argv[])
 
     auto q = gimbal.q(t - GIMBAL_DELAY);
     auto gs = gimbal.state();
+    auto mode = gimbal.mode();
     auto q_ypr = tools::eulers(q, 2, 1, 0);
 
     main_solver.set_R_gimbal2world(q);
-    auto main_armors = yolo.detect(img);
+    auto main_armors = filter_armors(yolo.detect(img), enemy_color, mode);
     solve_armors(main_armors, main_solver);
     main_camera_has_target = !main_armors.empty();
     auto main_targets = main_tracker.track(main_armors, t);

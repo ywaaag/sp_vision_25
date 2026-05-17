@@ -28,6 +28,9 @@ public:
 
     uint8_t getChassisStatus();
     uint8_t getSentryStatus();
+    uint8_t getTargetMode();
+    uint8_t getTerrainStatus();
+    uint8_t getBumpStatus();
     float getCmdVelX();
     float getCmdVelY();
     float getCmdVelZ();
