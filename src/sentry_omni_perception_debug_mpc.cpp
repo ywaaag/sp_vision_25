@@ -11,8 +11,7 @@
 #include <optional>
 #include <thread>
 
-#include "combat_rm_interfaces/msg/armor.hpp"
-#include "combat_rm_interfaces/msg/armors.hpp"
+#include "combat_rm_interfaces/msg/target.hpp"
 #include "io/camera.hpp"
 #include "io/gimbal/gimbal.hpp"
 #include "io/ros2/ros2.hpp"
@@ -148,32 +147,24 @@ std::string armor_number(auto_aim::ArmorName name)
   return "";
 }
 
-combat_rm_interfaces::msg::Armors make_armors_msg(const std::list<auto_aim::Armor> & armors)
+combat_rm_interfaces::msg::Target make_target_msg(const TargetCommand & target_command)
 {
-  combat_rm_interfaces::msg::Armors msg;
+  combat_rm_interfaces::msg::Target msg;
   msg.header.stamp = rclcpp::Clock(RCL_SYSTEM_TIME).now();
   msg.header.frame_id = "vision_world";
-  msg.armors.reserve(armors.size());
 
-  for (const auto & armor : armors) {
-    combat_rm_interfaces::msg::Armor armor_msg;
-    armor_msg.number = armor_number(armor.name);
-    armor_msg.type = auto_aim::ARMOR_TYPES[armor.type];
-    armor_msg.pose.position.x = armor.xyz_in_world.x();
-    armor_msg.pose.position.y = armor.xyz_in_world.y();
-    armor_msg.pose.position.z = armor.xyz_in_world.z();
-
-    const Eigen::Quaterniond q =
-      Eigen::AngleAxisd(armor.ypr_in_world[0], Eigen::Vector3d::UnitZ()) *
-      Eigen::AngleAxisd(armor.ypr_in_world[1], Eigen::Vector3d::UnitY()) *
-      Eigen::AngleAxisd(armor.ypr_in_world[2], Eigen::Vector3d::UnitX());
-    armor_msg.pose.orientation.x = q.x();
-    armor_msg.pose.orientation.y = q.y();
-    armor_msg.pose.orientation.z = q.z();
-    armor_msg.pose.orientation.w = q.w();
-
-    msg.armors.emplace_back(std::move(armor_msg));
+  if (!target_command.target.has_value()) {
+    msg.tracking = false;
+    return msg;
   }
+
+  const auto & target = target_command.target.value();
+  const auto ekf_x = target.ekf_x();
+  msg.tracking = true;
+  msg.id = armor_number(target.name);
+  msg.position.x = ekf_x[0];
+  msg.position.y = ekf_x[2];
+  msg.position.z = ekf_x[4];
 
   return msg;
 }
@@ -466,7 +457,6 @@ int main(int argc, char * argv[])
     solve_armors(main_armors, main_solver);
     main_camera_has_target = !main_armors.empty();
     auto main_targets = main_tracker.track(main_armors, t);
-    ros2.publish(make_armors_msg(main_armors));
 
     UsbThreadResult current_usb_result;
     {
@@ -483,6 +473,7 @@ int main(int argc, char * argv[])
       target_command = current_usb_result.target_command;
     }
 
+    ros2.publish(make_target_msg(target_command));
     target_queue.push(target_command);
 
     nlohmann::json data;

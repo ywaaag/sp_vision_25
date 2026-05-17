@@ -9,9 +9,9 @@
 #include "combat_rm_interfaces/msg/hurt_data.hpp"
 #include "combat_rm_interfaces/msg/rfid_status.hpp"
 #include "combat_rm_interfaces/msg/ground_robot_position.hpp"
-#include "combat_rm_interfaces/msg/armors.hpp"
 #include "combat_rm_interfaces/msg/sentry_gimbal.hpp"
 #include "combat_rm_interfaces/msg/sentry_info.hpp"
+#include "combat_rm_interfaces/msg/target.hpp"
 
 #include "io/packet_typedef.hpp"
 
@@ -31,7 +31,7 @@ public:
     void publishHurtData(const HurtDataPackage::data & pkg);
     void publishRfidStatus(const RfidStatusPackage::data & pkg);
     void publishGroundRobotPosition(const GroundRobotPositionPackage::data & pkg);
-    void publishArmors(const combat_rm_interfaces::msg::Armors & msg);
+    void publishTarget(const combat_rm_interfaces::msg::Target & msg);
     void publishSentryGimbal(float yaw, float pitch, float yaw_diff);
     void publishSentryInfo(const SentryInfoPackage::data & pkg);
 
@@ -45,7 +45,7 @@ private:
     rclcpp::Publisher<combat_rm_interfaces::msg::HurtData>::SharedPtr hurt_data_pub_;
     rclcpp::Publisher<combat_rm_interfaces::msg::RfidStatus>::SharedPtr rfid_status_pub_;
     rclcpp::Publisher<combat_rm_interfaces::msg::GroundRobotPosition>::SharedPtr ground_robot_position_pub_;
-    rclcpp::Publisher<combat_rm_interfaces::msg::Armors>::SharedPtr armors_pub_;
+    rclcpp::Publisher<combat_rm_interfaces::msg::Target>::SharedPtr target_pub_;
     rclcpp::Publisher<combat_rm_interfaces::msg::SentryGimbal>::SharedPtr sentry_gimbal_pub_;
     rclcpp::Publisher<combat_rm_interfaces::msg::SentryInfo>::SharedPtr sentry_info_pub_;
 

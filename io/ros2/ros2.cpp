@@ -81,9 +81,9 @@ void ROS2::publish(const GameRobotHpPackage::data & pkg)
     publishrefeedata_->publishGameRobotHp(pkg);
 }
 
-void ROS2::publish(const combat_rm_interfaces::msg::Armors & msg)
+void ROS2::publish(const combat_rm_interfaces::msg::Target & msg)
 {
-    publishrefeedata_->publishArmors(msg);
+    publishrefeedata_->publishTarget(msg);
 }
 
 void ROS2::publish(float yaw, float pitch, float yaw_diff)
